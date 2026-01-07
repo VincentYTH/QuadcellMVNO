@@ -1003,8 +1003,7 @@ LANGUAGES = {
         
         #Sim Resource
         'sim_resource_management': 'SIM 資源管理',
-        'sim_resource_description': '集中管理實體卡、eSIM、SoftProfile，所有欄位完全自訂',
-        'support_physical_esim_softprofile': '支援實體卡 · eSIM · SoftProfile · 任意自訂欄位',
+        'sim_resource_description': '庫存概覽',
         'search_type': '搜索類型',
         'all_suppliers': '所有供應商',
         'add_resource': '添加資源',
@@ -1023,7 +1022,6 @@ LANGUAGES = {
         'save': '保存',
         'confirm_delete': '確認刪除？',
         'sim_resources': 'SIM 資源',
-        'my_sim_inventory': '我的 SIM 卡庫存',
         'current_inventory': '目前庫存',
         'total': '總庫存',
         'cards': '張',

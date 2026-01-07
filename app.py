@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, g, session, Response, send_file
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import threading
 import subprocess
@@ -17,6 +17,7 @@ from modules.quadcell_api import QuadcellAPI
 from modules.simlessly_api import SimlesslyAPI
 from modules.worldmove_api import WorldMoveAPI
 from modules.sim_resources.manager import SimResourceManager
+from config.sim_resource import LOW_STOCK_THRESHOLD
 
 app = Flask(__name__)
 app.secret_key = 'QB($67:;P2G-h4qGo|f?'
@@ -81,6 +82,18 @@ def set_language(language):
 def translate_filter(key):
     """模板过滤器用于翻译文本"""
     return LANGUAGES.get(g.language, {}).get(key, key)
+
+# UTC to HK time
+@app.template_filter('hk_time')
+def hk_time_filter(dt):
+    if dt is None:
+        return '-'
+    
+    # 直接加 8 小時轉換為香港時間
+    hk_dt = dt + timedelta(hours=8)
+    
+    # 格式化為 YYYY-MM-DD HH:MM
+    return hk_dt.strftime('%Y-%m-%d %H:%M')
 
 # 启动Ngrok隧道
 def start_ngrok():
@@ -165,44 +178,32 @@ def get_recent_callbacks():
 # 主页面路由
 @app.route('/')
 def index():
-    """主頁面 - 選擇供應商 + SIM 庫存統計（含低庫存警告）"""
+    """主頁面 - 依供應商分組顯示 SIM 庫存（含低庫存警告）"""
     from sqlalchemy import func
 
-    # 總數
-    total_count = SimResource.query.count()
-    
-    # 按 type 分組
-    type_counts = db.session.query(
+    # 查詢數據：按 Supplier 和 Type 分組統計數量
+    # 結果類似: [('MontNet', 'Physical SIM', 1000), ('MontNet', 'eSIM', 880), ...]
+    inventory_counts = db.session.query(
+        SimResource.supplier,
         SimResource.type,
         func.count(SimResource.id)
-    ).group_by(SimResource.type).all()
-    type_stats = {row[0]: row[1] for row in type_counts}
+    ).group_by(SimResource.supplier, SimResource.type).all()
     
-    physical_count = type_stats.get('Physical SIM', 0)
-    esim_count = type_stats.get('eSIM', 0)
-    softprofile_count = type_stats.get('Soft Profile', 0)
-    other_count = total_count - (physical_count + esim_count + softprofile_count)
+    inventory_data = {}
+    for supplier, card_type, count in inventory_counts:
+        if not supplier: # 處理供應商為空的情況
+            supplier = "Unknown"
+        if supplier not in inventory_data:
+            inventory_data[supplier] = {}
+        inventory_data[supplier][card_type] = count
     
-    # 按 supplier 分組統計
-    supplier_counts = db.session.query(
-        SimResource.supplier,
-        func.count(SimResource.id)
-    ).group_by(SimResource.supplier).all()
-    supplier_stats = {row[0]: row[1] for row in supplier_counts}
+    # 對供應商名稱進行排序 (可選，讓顯示順序固定)
+    sorted_inventory = dict(sorted(inventory_data.items()))
     
-    # 获取低库存警告
-    low_stock_alerts = SimResourceManager.get_low_stock_alerts()
-    
-    # 傳遞 full_width=False 或默認（中間模式）
     return render_template('index.html',
-                           total_count=total_count,
-                           physical_count=physical_count,
-                           esim_count=esim_count,
-                           softprofile_count=softprofile_count,
-                           other_count=other_count,
-                           supplier_stats=supplier_stats,
-                           low_stock_alerts=low_stock_alerts,
-                           full_width=False)  # 明確指定中間模式
+                           inventory_data=sorted_inventory,
+                           low_stock_threshold=LOW_STOCK_THRESHOLD,
+                           full_width=False)
 
 # 供應商頁面
 @app.route('/api/<vendor>')

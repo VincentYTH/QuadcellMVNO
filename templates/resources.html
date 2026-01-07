@@ -20,6 +20,7 @@
     .sortable-header {
         cursor: pointer;
         user-select: none;
+        white-space: nowrap;
     }
     
     .sortable-header:hover {
@@ -29,6 +30,13 @@
     .sort-icon {
         font-size: 0.8em;
         margin-left: 5px;
+    }
+    
+    /* 時間欄位樣式 */
+    .time-cell {
+        font-size: 0.85rem;
+        color: #666;
+        white-space: nowrap;
     }
     
     /* 表格響應式設計 */
@@ -47,12 +55,7 @@
 {% block content %}
 <h2 class="mb-4">{{ _('sim_resource_management') }}</h2>
 
-<div class="d-flex justify-content-between mb-3">
-    <div class="search-stats">
-        <span class="badge bg-info">
-            共 {{ pagination.total }} 筆資料
-        </span>
-    </div>
+<div class="d-flex justify-content-end mb-3">
     <div class="btn-group">
         <a href="/api/template/sim_resources" class="btn btn-info me-2">
             <i class="bi bi-download"></i> {{ _('download_template') }}
@@ -68,6 +71,8 @@
 
 <div class="search-filter-group">
     <form class="mb-4" method="GET" id="searchForm">
+        <input type="hidden" name="per_page" value="{{ search_params.per_page }}">
+
         <div class="row mb-3 g-2">
             <div class="col-md-3">
                 <label class="form-label small">Provider</label>
@@ -184,10 +189,10 @@
         <div class="row">
             <div class="col-md-12 text-end">
                 <button type="submit" class="btn btn-primary btn-sm me-2">
-                    <i class="bi bi-search"></i> {{ _('search') }}
+                    <i class="bi bi-search"></i> Search
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="clearAllFilters()">
-                    <i class="bi bi-eraser"></i> 清除所有
+                    <i class="bi bi-eraser"></i> Clear ALL
                 </button>
             </div>
         </div>
@@ -195,7 +200,7 @@
 </div>
 
 <div class="table-responsive">
-    <table class="table table-striped table-hover">
+    <table class="table table-striped table-hover align-middle">
         <thead>
             <tr>
                 <th class="sortable-header" onclick="sortTable('supplier')">
@@ -246,6 +251,18 @@
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
+                <th class="sortable-header" onclick="sortTable('created_at')">
+                    Create Time
+                    {% if search_params.sort == 'created_at' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('updated_at')">
+                    Updated Time
+                    {% if search_params.sort == 'updated_at' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
                 <th>{{ _('actions') }}</th>
             </tr>
         </thead>
@@ -257,9 +274,11 @@
                 <td>{{ res.resources_type or '' }}</td>
                 <td>{{ res.batch or '' }}</td>
                 <td>{{ res.received_date or '' }}</td>
-                <td><code>{{ res.imsi or '' }}</code></td>
-                <td><code>{{ res.iccid or '' }}</code></td>
+                <td>{{ res.imsi or '' }}</td>
+                <td>{{ res.iccid or '' }}</td>
                 <td>{{ res.msisdn or '' }}</td>
+                <td>{{ res.created_at | hk_time }}</td>
+                <td>{{ res.updated_at | hk_time }}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
                         <button class="btn btn-warning edit-btn"
@@ -279,7 +298,7 @@
                             data-puk1="{{ res.puk1 or '' }}"
                             data-pin2="{{ res.pin2 or '' }}"
                             data-puk2="{{ res.puk2 or '' }}">
-                            <i class="bi bi-pencil"></i> {{ _('edit') }}
+                            <i class="bi bi-pencil"></i>
                         </button>
                         <button class="btn btn-danger delete-btn" data-id="{{ res.id }}">
                             <i class="bi bi-trash"></i>
@@ -292,33 +311,39 @@
     </table>
 </div>
 
-{% if pagination.pages > 1 %}
-<nav>
-    <ul class="pagination justify-content-center">
-        {% if pagination.has_prev %}
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="goToPage({{ pagination.prev_num }}); return false;">
-                    {{ _('previous') }}
-                </a>
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <div>
+        <select class="form-select form-select-sm" style="width: auto; display: inline-block;" onchange="changePerPage(this.value)">
+            <option value="20" {% if search_params.per_page == 20 %}selected{% endif %}>20 / page</option>
+            <option value="50" {% if search_params.per_page == 50 %}selected{% endif %}>50 / page</option>
+            <option value="100" {% if search_params.per_page == 100 %}selected{% endif %}>100 / page</option>
+        </select>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <nav>
+        <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                <a class="page-link" href="#" onclick="goToPage({{ pagination.prev_num }}); return false;">{{ _('previous') }}</a>
             </li>
-        {% endif %}
-        
-        <li class="page-item disabled">
-            <a class="page-link">
-                頁碼 {{ pagination.page }} / {{ pagination.pages }}
-            </a>
-        </li>
-        
-        {% if pagination.has_next %}
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="goToPage({{ pagination.next_num }}); return false;">
-                    {{ _('next') }}
-                </a>
+            
+            {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                {% if page_num %}
+                    <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="#" onclick="goToPage({{ page_num }}); return false;">{{ page_num }}</a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+            {% endfor %}
+
+            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                <a class="page-link" href="#" onclick="goToPage({{ pagination.next_num }}); return false;">{{ _('next') }}</a>
             </li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
 
 <div class="modal fade" id="addModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -524,6 +549,14 @@ function clearAllFilters() {
 function goToPage(page) {
     const params = new URLSearchParams(window.location.search);
     params.set('page', page);
+    window.location.href = `?${params.toString()}`;
+}
+
+// 4) 新增：修改每頁顯示數量
+function changePerPage(val) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('per_page', val);
+    params.set('page', 1); // 改變顯示數量後重置回第一頁
     window.location.href = `?${params.toString()}`;
 }
 

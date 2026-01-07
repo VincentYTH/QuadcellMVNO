@@ -13,8 +13,10 @@ sim_resources_bp = Blueprint('sim_resources', __name__, url_prefix='/resources')
 # SIM資源管理頁面 - 使用全寬模式
 @sim_resources_bp.route('')
 def resources_page():
-    """SIM資源管理頁面 - 支持多欄位搜索 + 每頁50筆 + 排序"""
+    """SIM資源管理頁面 - 支持多欄位搜索 + 每頁數量控制 + 排序"""
     page = request.args.get('page', 1, type=int)
+    # 獲取每頁顯示數量，默認為 20
+    per_page = request.args.get('per_page', 20, type=int)
     
     # 獲取搜索參數
     search_params = {
@@ -27,11 +29,12 @@ def resources_page():
         'iccid': request.args.get('iccid', '').strip(),
         'msisdn': request.args.get('msisdn', '').strip(),
         'sort': request.args.get('sort', 'updated_at'),
-        'order': request.args.get('order', 'desc')
+        'order': request.args.get('order', 'desc'),
+        'per_page': per_page  # 將 per_page 加入參數以便回傳給前端
     }
     
-    # 獲取資源列表
-    resources = SimResourceManager.get_all_resources(search_params, page, 50)
+    # 獲取資源列表 (傳入 per_page)
+    resources = SimResourceManager.get_all_resources(search_params, page, per_page)
     
     # 獲取選項數據
     options = SimResourceManager.get_options()

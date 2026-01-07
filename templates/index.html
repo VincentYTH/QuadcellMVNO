@@ -40,57 +40,43 @@
                     </a>
                 </div>
 
-                <h5 class="mt-5 text-primary">
-                    <i class="bi bi-database-fill-gear"></i> {{ _('my_sim_inventory') }}
-                </h5>
                 <div class="list-group">
                     <a href="/resources" class="list-group-item list-group-item-action list-group-item-success">
                         <div class="d-flex w-100 justify-content-between align-items-center">
                             <h5 class="mb-1 text-success">
                                 <i class="bi bi-sim"></i> {{ _('sim_resource_management') }}
                             </h5>
-                            <span class="badge bg-danger rounded-pill">NEW</span>
-                        </div>
+                            </div>
                         <p class="mb-1 text-muted">
                             {{ _('sim_resource_description') }}
                         </p>
 
-                        <!-- 即時統計 + 低庫存警告 + 供應商分布 -->
                         <div class="mt-3">
-                            <!-- 低庫存警告（如果有才顯示） -->
-                            {% if low_stock_alerts %}
-                            <div class="alert alert-danger py-2" role="alert">
-                                <strong><i class="bi bi-exclamation-triangle-fill"></i> 低庫存警告：</strong>
-                                {{ low_stock_alerts|join(' · ') }}
-                            </div>
-                            {% endif %}
-                            
-                            <h6 class="text-dark fw-bold">{{ _('current_inventory') }}：</h6>
-                            <ul class="list-unstyled mb-2">
-                                <li><strong>{{ _('total') }}：</strong> {{ total_count }} {{ _('cards') }}</li>
-                                <li><strong>{{ _('physical_card') }}：</strong> {{ physical_count }} {{ _('cards') }}</li>
-                                <li><strong>eSIM：</strong> {{ esim_count }} {{ _('cards') }}</li>
-                                <li><strong>SoftProfile：</strong> {{ softprofile_count }} {{ _('cards') }}</li>
-                                {% if other_count > 0 %}
-                                <li><strong>{{ _('other_types') }}：</strong> {{ other_count }} {{ _('cards') }}</li>
-                                {% endif %}
-                            </ul>
-                            
-                            <!-- 供應商分布 -->
-                            <h6 class="text-dark fw-bold mt-3">{{ _('inventory_by_supplier') }}：</h6>
-                            <ul class="list-unstyled mb-0 small">
-                                {% for supplier, count in supplier_stats.items() %}
-                                <li><strong>{{ supplier|capitalize }}：</strong> {{ count }} {{ _('cards') }}</li>
-                                {% else %}
-                                <li class="text-muted">尚未有庫存資料</li>
+                            {% if inventory_data %}
+                                {% for supplier, types in inventory_data.items() %}
+                                    <h6 class="text-dark fw-bold mt-3 border-bottom pb-1" style="width: fit-content; min-width: 150px;">
+                                        {{ supplier }}:
+                                    </h6>
+                                    
+                                    <ul class="list-unstyled mb-0 ms-3">
+                                        {% for type, count in types.items() %}
+                                        <li class="mb-1">
+                                            <span class="fw-normal">{{ type }}:</span> 
+                                            <span class="fw-bold">{{ count }} pcs</span>
+                                            
+                                            {% if count < low_stock_threshold %}
+                                                <span class="text-danger fw-bold ms-2 small">
+                                                    <i class="bi bi-exclamation-triangle-fill"></i> 低庫存
+                                                </span>
+                                            {% endif %}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
                                 {% endfor %}
-                            </ul>
+                            {% else %}
+                                <p class="text-muted mt-2">暫無庫存資料</p>
+                            {% endif %}
                         </div>
-                        
-                        <small class="text-success d-block mt-3">
-                            <i class="bi bi-check2-all"></i> 
-                            {{ _('support_physical_esim_softprofile') }}
-                        </small>
                     </a>
                 </div>
             </div>
