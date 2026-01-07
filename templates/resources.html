@@ -47,7 +47,6 @@
 {% block content %}
 <h2 class="mb-4">{{ _('sim_resource_management') }}</h2>
 
-<!-- 右上角按鈕群 -->
 <div class="d-flex justify-content-between mb-3">
     <div class="search-stats">
         <span class="badge bg-info">
@@ -67,11 +66,9 @@
     </div>
 </div>
 
-<!-- 搜索表單 -->
 <div class="search-filter-group">
     <form class="mb-4" method="GET" id="searchForm">
         <div class="row mb-3 g-2">
-            <!-- Provider -->
             <div class="col-md-3">
                 <label class="form-label small">Provider</label>
                 <div class="input-group input-group-clear">
@@ -90,7 +87,6 @@
                 </div>
             </div>
             
-            <!-- CardType -->
             <div class="col-md-3">
                 <label class="form-label small">CardType</label>
                 <div class="input-group input-group-clear">
@@ -109,7 +105,6 @@
                 </div>
             </div>
             
-            <!-- ResourcesType -->
             <div class="col-md-3">
                 <label class="form-label small">ResourcesType</label>
                 <div class="input-group input-group-clear">
@@ -128,7 +123,6 @@
                 </div>
             </div>
             
-            <!-- Batch -->
             <div class="col-md-3">
                 <label class="form-label small">Batch</label>
                 <div class="input-group input-group-clear">
@@ -142,7 +136,6 @@
         </div>
         
         <div class="row mb-3 g-2">
-            <!-- ReceivedDate -->
             <div class="col-md-3">
                 <label class="form-label small">ReceivedDate</label>
                 <div class="input-group input-group-clear">
@@ -154,7 +147,6 @@
                 </div>
             </div>
             
-            <!-- IMSI -->
             <div class="col-md-3">
                 <label class="form-label small">IMSI</label>
                 <div class="input-group input-group-clear">
@@ -166,7 +158,6 @@
                 </div>
             </div>
             
-            <!-- ICCID -->
             <div class="col-md-3">
                 <label class="form-label small">ICCID</label>
                 <div class="input-group input-group-clear">
@@ -178,7 +169,6 @@
                 </div>
             </div>
             
-            <!-- MSISDN -->
             <div class="col-md-3">
                 <label class="form-label small">MSISDN</label>
                 <div class="input-group input-group-clear">
@@ -204,7 +194,6 @@
     </form>
 </div>
 
-<!-- 資源列表表格 -->
 <div class="table-responsive">
     <table class="table table-striped table-hover">
         <thead>
@@ -303,7 +292,6 @@
     </table>
 </div>
 
-<!-- 處理分頁 -->
 {% if pagination.pages > 1 %}
 <nav>
     <ul class="pagination justify-content-center">
@@ -332,7 +320,6 @@
 </nav>
 {% endif %}
 
-<!-- 添加/編輯模態框 -->
 <div class="modal fade" id="addModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -344,7 +331,6 @@
                 <form id="resourceForm">
                     <input type="hidden" id="editId">
                     
-                    <!-- A-H 必填 -->
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label class="form-label">Provider *</label>
@@ -404,9 +390,7 @@
                         </div>
                     </div>
                     
-                    <!-- I-K 條件顯示 -->
                     <div id="conditionalFields">
-                        <!-- Soft Profile 字段 -->
                         <div class="row mb-3 softprofile-fields d-none">
                             <div class="col-md-6">
                                 <label class="form-label">Ki *</label>
@@ -418,7 +402,6 @@
                             </div>
                         </div>
                         
-                        <!-- eSIM 字段 -->
                         <div class="row mb-3 esim-fields d-none">
                             <div class="col-md-12">
                                 <label class="form-label">LPA *</label>
@@ -427,7 +410,6 @@
                         </div>
                     </div>
                     
-                    <!-- L-O 選填 -->
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label class="form-label">PIN1</label>
@@ -456,7 +438,6 @@
     </div>
 </div>
 
-<!-- 導入模態框 -->
 <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -546,22 +527,35 @@ function goToPage(page) {
     window.location.href = `?${params.toString()}`;
 }
 
+// 更新資源類型選項函數
+function updateResourceTypes(provider, selectedValue) {
+    const presetTypes = {
+        'Quadcell': ['Prepaid', 'Postpaid', 'Data Only'],
+        'Montnet': ['MNT000', 'MNT001', 'MNT002']
+    };
+    
+    const resourcesTypeSelect = $('#resourcesType');
+    resourcesTypeSelect.empty().append('<option value="">請選擇資源類型</option>');
+    
+    const types = presetTypes[provider] || ['Default'];
+    types.forEach(type => {
+        resourcesTypeSelect.append(`<option value="${type}">${type}</option>`);
+    });
+    
+    // 如果有提供選中的值，則選中它
+    if (selectedValue) {
+        // 檢查該值是否在預設列表中，如果不在，手動添加它（支持舊數據）
+        if (resourcesTypeSelect.find(`option[value="${selectedValue}"]`).length === 0) {
+            resourcesTypeSelect.append(`<option value="${selectedValue}">${selectedValue}</option>`);
+        }
+        resourcesTypeSelect.val(selectedValue);
+    }
+}
+
 $(document).ready(function() {
     // Provider 改變時更新資源類型
     $('#provider').change(function() {
-        const provider = $(this).val();
-        const presetTypes = {
-            'Quadcell': ['Prepaid', 'Postpaid', 'Data Only'],
-            'Montnet': ['MNT000', 'MNT001', 'MNT002']
-        };
-        
-        const resourcesTypeSelect = $('#resourcesType');
-        resourcesTypeSelect.empty().append('<option value="">請選擇資源類型</option>');
-        
-        const types = presetTypes[provider] || ['Default'];
-        types.forEach(type => {
-            resourcesTypeSelect.append(`<option value="${type}">${type}</option>`);
-        });
+        updateResourceTypes($(this).val());
     });
     
     // CardType 變動時顯示/隱藏條件字段
@@ -602,10 +596,10 @@ $(document).ready(function() {
         };
         
         const editId = $('#editId').val();
-        const url = editId ? `/api/resources/edit/${editId}` : '/api/resources/add';
+        const url = editId ? `/api/edit/${editId}` : '/api/add';
         
         $.ajax({
-            url: url,
+            url: '/resources' + url, // 修正URL路徑，加上前綴
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify(data),
@@ -618,7 +612,7 @@ $(document).ready(function() {
                 }
             },
             error: function(err) {
-                const errorMsg = err.responseJSON ? err.responseJSON.error : '未知錯誤';
+                const errorMsg = (err.responseJSON && err.responseJSON.error) ? err.responseJSON.error : (err.responseText || '未知錯誤');
                 alert('保存失敗！詳細原因：' + errorMsg);
             }
         });
@@ -630,12 +624,12 @@ $(document).ready(function() {
         modal.find('.modal-title').text('編輯資源');
         
         $('#editId').val($(this).data('id'));
-        $('#provider').val($(this).data('provider')).trigger('change');
         
-        // 設置資源類型（需要等待provider更新）
-        setTimeout(() => {
-            $('#resourcesType').val($(this).data('resourcestype'));
-        }, 100);
+        const provider = $(this).data('provider');
+        $('#provider').val(provider);
+        
+        // 立即更新資源類型並選中
+        updateResourceTypes(provider, $(this).data('resourcestype'));
         
         $('#cardType').val($(this).data('cardtype')).trigger('change');
         $('#batch').val($(this).data('batch'));
@@ -645,14 +639,12 @@ $(document).ready(function() {
         $('#msisdn').val($(this).data('msisdn'));
         
         // 設置條件字段
-        setTimeout(() => {
-            if ($(this).data('cardtype') === 'Soft Profile') {
-                $('#ki').val($(this).data('ki'));
-                $('#opc').val($(this).data('opc'));
-            } else if ($(this).data('cardtype') === 'eSIM') {
-                $('#lpa').val($(this).data('lpa'));
-            }
-        }, 100);
+        if ($(this).data('cardtype') === 'Soft Profile') {
+            $('#ki').val($(this).data('ki'));
+            $('#opc').val($(this).data('opc'));
+        } else if ($(this).data('cardtype') === 'eSIM') {
+            $('#lpa').val($(this).data('lpa'));
+        }
         
         // 設置PIN/PUK（可見）
         $('#pin1').val($(this).data('pin1'));
@@ -667,7 +659,7 @@ $(document).ready(function() {
     $('.delete-btn').click(function() {
         if (confirm('{{ _("confirm_delete") }}')) {
             const id = $(this).data('id');
-            $.post(`/api/resources/delete/${id}`, function() {
+            $.post(`/resources/api/delete/${id}`, function() {
                 location.reload();
             });
         }
@@ -679,6 +671,70 @@ $(document).ready(function() {
         $('#editId').val('');
         $('#modalTitle').text('{{ _("add_resource") }}');
         $('.softprofile-fields, .esim-fields').addClass('d-none');
+        // 重置資源類型下拉框
+        $('#resourcesType').empty().append('<option value="">請選擇資源類型</option>');
+    });
+    
+    // 導入功能JS
+    $('#submitImportBtn').click(function() {
+        const formData = new FormData($('#importForm')[0]);
+        const btn = $(this);
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 導入中...');
+        
+        $('#importResult').hide();
+        $('#importDetails').hide();
+        
+        $.ajax({
+            url: '/resources/api/import',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(res) {
+                $('#importResult').show();
+                
+                if (res.success) {
+                    $('#successMessage').show().text(res.message);
+                    $('#errorMessage').hide();
+                    
+                    if (res.duplicate_count > 0 || res.error_count > 0) {
+                        $('#importDetails').show();
+                        
+                        // 顯示重複項目
+                        if (res.duplicates && res.duplicates.length > 0) {
+                            let dupHtml = '<div class="alert alert-warning"><strong>重複項目 (前50筆):</strong><ul class="mb-0 small">';
+                            res.duplicates.forEach(d => {
+                                dupHtml += `<li>行 ${d.row}: IMSI=${d.IMSI}, ICCID=${d.ICCID} (${d.reason})</li>`;
+                            });
+                            dupHtml += '</ul></div>';
+                            $('#duplicateList').html(dupHtml);
+                        }
+                        
+                        // 顯示錯誤項目
+                        if (res.errors && res.errors.length > 0) {
+                            let errHtml = '<div class="alert alert-danger"><strong>格式錯誤 (前50筆):</strong><ul class="mb-0 small">';
+                            res.errors.forEach(e => {
+                                errHtml += `<li>${e}</li>`;
+                            });
+                            errHtml += '</ul></div>';
+                            $('#errorList').html(errHtml);
+                        }
+                    } else {
+                        // 完全成功，延遲刷新
+                        setTimeout(() => location.reload(), 1500);
+                    }
+                }
+            },
+            error: function(err) {
+                $('#importResult').show();
+                $('#successMessage').hide();
+                const msg = err.responseJSON ? err.responseJSON.error : '上傳失敗';
+                $('#errorMessage').show().text(msg);
+            },
+            complete: function() {
+                btn.prop('disabled', false).text('{{ _("import") }}');
+            }
+        });
     });
 });
 </script>

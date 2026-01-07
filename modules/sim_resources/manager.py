@@ -111,8 +111,10 @@ class SimResourceManager:
         
         # 卡类型验证
         card_type = data.get('CardType', '')
-        if card_type not in SimResourceManager.CARD_TYPE_OPTIONS:
-            errors.append(f"无效的卡类型: {card_type}")
+        if card_type and card_type not in SimResourceManager.CARD_TYPE_OPTIONS:
+            # 不再強制報錯，允許數據庫中已存在的舊類型，或者發出警告
+            # 如果需要嚴格驗證，可以保留。這裡暫時保留但建議前端選項要同步
+            pass 
         
         # 条件必填验证
         if card_type == 'Soft Profile':
@@ -123,13 +125,15 @@ class SimResourceManager:
         elif card_type == 'eSIM':
             if not data.get('LPA', '').strip():
                 errors.append("eSIM 必须填写 LPA")
-                
-        resource_type = data.get('ResourcesType', '')
-        if resource_type not in SimResourceManager.RESOURCES_TYPE_OPTIONS:
-            errors.append(f"无效的資源类型: {card_type}")        
         
-        # 重复检查（仅新增时）
+        # 移除對 ResourcesType 的嚴格集合驗證，允許自定義類型
+        # resource_type = data.get('ResourcesType', '')
+        # if resource_type not in SimResourceManager.RESOURCES_TYPE_OPTIONS:
+        #     errors.append(f"无效的資源类型: {card_type}")        
+        
+        # 重复检查
         if not is_edit:
+            # 僅在新增時檢查重複
             if data.get('IMSI'):
                 existing = SimResource.query.filter_by(imsi=data['IMSI'].strip()).first()
                 if existing:
@@ -137,6 +141,17 @@ class SimResourceManager:
             
             if data.get('ICCID'):
                 existing = SimResource.query.filter_by(iccid=data['ICCID'].strip()).first()
+                if existing:
+                    errors.append("ICCID 已存在")
+        else:
+            # 編輯時檢查是否與其他資源重複 (排除自己)
+            if data.get('IMSI'):
+                existing = SimResource.query.filter(SimResource.imsi == data['IMSI'].strip(), SimResource.id != resource_id).first()
+                if existing:
+                    errors.append("IMSI 已存在")
+            
+            if data.get('ICCID'):
+                existing = SimResource.query.filter(SimResource.iccid == data['ICCID'].strip(), SimResource.id != resource_id).first()
                 if existing:
                     errors.append("ICCID 已存在")
         
