@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vendor_name }} {{ _('api_Operations') }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tab-pane {
+        padding: 20px;
+        border-left: 1px solid #dee2e6;
+        border-right: 1px solid #dee2e6;
+        border-bottom: 1px solid #dee2e6;
+        border-radius: 0 0 5px 5px;
+    }
+    .endpoint-info {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .param-row {
+        margin-bottom: 10px;
+        padding: 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+    }
+    .array-item {
+        background-color: #f8f9fa;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        border: 1px dashed #dee2e6;
+    }
+    .ngrok-status {
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>{{ vendor_name }} {{ _('api_Operations') }}</h2>
+        
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="single-tab" data-bs-toggle="tab" data-bs-target="#single" type="button" role="tab">
+                    <i class="bi bi-play-circle"></i> {{ _('single_request') }}
+                </button>
+            </li>            
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="batch-tab" data-bs-toggle="tab" data-bs-target="#batch" type="button" role="tab">
+                    <i class="bi bi-collection-play"></i> {{ _('batch_processing') }}
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="callbacks-tab" data-bs-toggle="tab" data-bs-target="#callbacks" type="button" role="tab">
+                    <i class="bi bi-arrow-left-right"></i> {{ _('worldmove_callback_title') }}
+                </button>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="myTabContent">
+            <!-- 单条请求标签页 -->
+            <div class="tab-pane fade show active" id="single" role="tabpanel">
+                <div class="alert alert-info">
+                    <h5>{{ _('single_title') }}</h5>
+                    <p>{{ _('worldmove_single_description') }}</p>
+                    <p><strong>{{ _('note') }}:</strong> {{ _('worldmove_single_note') }}</p>
+                </div>
+                
+                <form id="singleForm">
+                    <div class="mb-3">
+                        <label for="endpoint" class="form-label">{{ _('api_endpoint') }}</label>
+                        <select class="form-select" id="endpoint" name="endpoint" required>
+                            <option value="">{{ _('select_endpoint') }}</option>
+                            {% for endpoint in endpoints %}
+                            <option value="{{ endpoint }}">{{ endpoint }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div id="endpointInfo" class="endpoint-info" style="display: none;">
+                        <h6>{{ _('enpoint_info') }}</h6>
+                        <p id="endpointDescription"></p>
+                    </div>
+                    
+                    <div id="paramsContainer">
+                        <!-- 参数将在这里动态生成 -->
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary d-block mt-3">
+                        <i class="bi bi-send"></i> {{ _('send_request') }}
+                    </button>
+                </form>
+                
+                <div id="singleResult" class="mt-3" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">{{ _('response_result') }}</div>
+                        <div class="card-body">
+                            <pre id="responseContent" class="p-3 bg-light rounded"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 批量处理标签页 -->
+            <div class="tab-pane fade" id="batch" role="tabpanel">
+                <div class="alert alert-info">
+                    <h5>{{ _('batch_title') }}</h5>
+                    <p>{{ _('worldmove_batch_description') }}</p>
+                    <ul>
+                        <li><strong>endpoint</strong>: {{ _('api_endpoint') }}</li>
+                        <li><strong>imsi</strong>: {{ _('imsi_number_or_range') }}</li>
+                        <li>{{ _('other_required_parameters') }}</li>
+                    </ul>
+                    <p>{{ _('worldmove_batch_note') }}</p>
+                    <!-- 添加模板下载按钮 -->
+                    <div class="mt-3">
+                        <a href="/api/template/worldmove" class="btn btn-success">
+                            <i class="bi bi-download"></i> {{ _('download_template') }}
+                        </a>
+                        <small class="text-muted ms-2">{{ _('template_note') }}</small>
+                    </div>                       
+                </div>
+                
+                <form id="batchForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="batchFile" class="form-label">{{ _('select_Excel_File') }}</label>
+                        <input class="form-control" type="file" id="batchFile" name="file" accept=".xlsx,.xls">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="delay" class="form-label">{{ _('request_interval') }}</label>
+                        <input type="number" class="form-control" id="delay" name="delay" value="0.5" step="0.1" min="0">
+                        <div class="form-text">{{ _('request_interval_note') }}</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-play-fill"></i> {{ _('start_processing') }}
+                    </button>
+                </form>
+                
+                <div id="batchLoading" class="mt-3" style="display: none;">
+                    <div class="alert alert-info">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">{{ _('loading') }}</span>
+                        </div>
+                        {{ _('processing_please_wait') }}
+                    </div>
+                </div>
+                
+                <div id="batchResult" class="mt-3" style="display: none;">
+                    <div class="alert alert-success">
+                        <h5>{{ _('process_completed') }}</h5>
+                        <p id="batchResultMessage"></p>
+                        <p>{{ _('result_file_generated') }}<a id="downloadLink" href="#" class="btn btn-success btn-sm">{{ _('click_to_download') }}</a></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 回调信息标签页 -->
+            <div class="tab-pane fade" id="callbacks" role="tabpanel">
+                <div class="alert alert-info">
+                    <h5>{{ _('worldmove_callback_title') }}</h5>
+                    <p>{{ _('worldmove_callback_description') }}</p>
+                    <ul>
+                        <li><strong>/Api/SOrder/eSIMOrderCallback</strong> - {{ _('worldmove_callback_esim_order') }}</li>
+                        <li><strong>/Api/SOrder/eSIMOrderandRedeemCallback</strong> - {{ _('worldmove_callback_esim_order_redeem') }}</li>
+                        <li><strong>/Api/OrderRedemption/RedeemRedemptionCodeCallback</strong> - {{ _('worldmove_callback_redemption_code') }}</li>
+                        <li><strong>/Api/SOrder/TopUpCallback</strong> - {{ _('worldmove_callback_top_up') }}</li>
+                    </ul>
+                    <p>{{ _('worldmove_callback_logs') }}</p>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>{{ _('worldmove_ngrok_status') }}</h5>
+                    </div>
+                    <div class="card-body ngrok-status">
+                        <div id="ngrokStatusContent">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">{{ _('loading') }}</span>
+                                </div>
+                                <p>{{ _('worldmove_loading_ngrok') }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>{{ _('worldmove_recent_callbacks') }}</h5>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadRecentCallbacks()">
+                            <i class="bi bi-arrow-clockwise"></i> {{ _('refresh') }}
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="recentCallbacks">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">{{ _('loading') }}</span>
+                                </div>
+                                <p>{{ _('worldmove_loading_callbacks') }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>{{ _('worldmove_callback_files') }}</h5>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadCallbackFiles()">
+                            <i class="bi bi-arrow-clockwise"></i> {{ _('refresh') }}
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="list-group" id="callbackFiles">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">{{ _('loading') }}</span>
+                                </div>
+                                <p>{{ _('worldmove_loading_files') }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// WorldMove端点信息映射
+var worldmoveEndpointInfo = {
+    "QuoteMg/myQueryAll": "{{ _('worldmove_endpoint_quote_query_all') }}",
+    "SOrder/mybuyesim": "{{ _('worldmove_endpoint_buy_esim') }}",
+    "SOrder/querybuyesim": "{{ _('worldmove_endpoint_query_esim') }}",
+    "SOrder/mybuyesimRedemption": "{{ _('worldmove_endpoint_buy_esim_redemption') }}",
+    "OrderRedemption/redemption": "{{ _('worldmove_endpoint_redemption') }}",
+    "SOrder/mybuysim": "{{ _('worldmove_endpoint_buy_sim') }}",
+    "SOrder/mydeposit": "{{ _('worldmove_endpoint_deposit') }}",
+    "SimOperate/simRemoteActiv": "{{ _('worldmove_endpoint_sim_remote_activ') }}",
+    "SimOperate/simTrafficReset": "{{ _('worldmove_endpoint_sim_traffic_reset') }}",
+    "UseageDetail/queryUsage": "{{ _('worldmove_endpoint_query_usage') }}",
+    "UseageDetail/queryBasicInfo": "{{ _('worldmove_endpoint_query_basic_info') }}",
+    "UseageDetail/queryEsimProgresses": "{{ _('worldmove_endpoint_query_esim_progresses') }}",
+    "SimQuery/simExists": "{{ _('worldmove_endpoint_sim_exists') }}"
+};
+
+$(document).ready(function() {
+    // 端点选择变化事件
+    $('#endpoint').change(function() {
+        var endpoint = $(this).val();
+        if (endpoint) {
+            $('#endpointInfo').show();
+            $('#endpointDescription').text(worldmoveEndpointInfo[endpoint] || '{{ _("no_description_available") }}');
+            
+            // 清空参数容器
+            $('#paramsContainer').empty();
+            
+            // 通过AJAX获取端点参数
+            $.ajax({
+                url: '/api/worldmove/endpoint/' + encodeURIComponent(endpoint) + '/params',
+                type: 'GET',
+                success: function(params) {
+                    if (params.length === 0) {
+                        $('#paramsContainer').append('<div class="alert alert-info">{{ _("worldmove_no_extra_params") }}</div>');
+                    } else {
+                        // 为每个参数创建输入框
+                        params.forEach(function(param) {
+                            if (param.type === 'array') {
+                                // 处理数组类型的参数
+                                var arrayContainer = $('<div class="array-container mb-3"></div>');
+                                arrayContainer.append('<h6>' + param.name + ' <small class="text-muted">(' + param.description + ')</small></h6>');
+                                
+                                var addButton = $('<button type="button" class="btn btn-sm btn-outline-primary mb-2 add-array-item">{{ _("add") }}</button>');
+                                arrayContainer.append(addButton);
+                                
+                                var itemsContainer = $('<div class="array-items-container"></div>');
+                                arrayContainer.append(itemsContainer);
+                                
+                                // 添加第一个项目
+                                addArrayItem(param, itemsContainer);
+                                
+                                addButton.click(function() {
+                                    addArrayItem(param, itemsContainer);
+                                });
+                                
+                                $('#paramsContainer').append(arrayContainer);
+                            } else {
+                                // 处理普通参数
+                                var paramRow = `
+                                <div class="param-row mb-3">
+                                    <label for="param_${param.name}" class="form-label">${param.name} ${param.required ? '<span class="text-danger">*</span>' : ''}</label>
+                                    <small class="form-text text-muted d-block">${param.description}</small>
+                                    <input type="${param.type === 'number' ? 'number' : 'text'}" 
+                                           class="form-control" 
+                                           id="param_${param.name}" 
+                                           name="${param.name}" 
+                                           ${param.required ? 'required' : ''}
+                                           placeholder="{{ _("enter_parameter_value") }} ${param.name}">
+                                </div>`;
+                                $('#paramsContainer').append(paramRow);
+                            }
+                        });
+                    }
+                },
+                error: function(xhr) {
+                    $('#paramsContainer').append('<div class="alert alert-danger">{{ _("worldmove_get_params_failed") }}: ' + (xhr.responseJSON ? xhr.responseJSON.error : '{{ _("unknown_error") }}') + '</div>');
+                }
+            });
+        } else {
+            $('#endpointInfo').hide();
+            $('#paramsContainer').empty();
+        }
+    });
+    
+    // 添加数组项目
+    function addArrayItem(param, container) {
+        var itemIndex = container.children().length;
+        var itemDiv = $('<div class="array-item mb-2"></div>');
+        
+        // 添加删除按钮
+        var deleteButton = $('<button type="button" class="btn btn-sm btn-outline-danger float-end remove-array-item">{{ _("delete") }}</button>');
+        itemDiv.append(deleteButton);
+        
+        // 添加字段
+        param.fields.forEach(function(field) {
+            var fieldHtml = `
+            <div class="mb-2">
+                <label class="form-label">${field.name} ${field.required ? '<span class="text-danger">*</span>' : ''}</label>
+                <small class="form-text text-muted d-block">${field.description}</small>
+                <input type="${field.type === 'number' ? 'number' : 'text'}" 
+                       class="form-control" 
+                       name="${param.name}[${itemIndex}][${field.name}]" 
+                       ${field.required ? 'required' : ''}
+                       placeholder="{{ _("enter_parameter_value") }} ${field.name}">
+            </div>`;
+            itemDiv.append(fieldHtml);
+        });
+        
+        container.append(itemDiv);
+        
+        // 绑定删除按钮事件
+        deleteButton.click(function() {
+            itemDiv.remove();
+        });
+    }
+    
+    // 批量处理表单提交
+    $('#batchForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        // 获取并处理delay值
+        var delayInput = $('#delay').val();
+        var delayValue = delayInput === '' ? 0 : parseFloat(delayInput);
+        
+        // 确保delay值是非负数
+        if (isNaN(delayValue) || delayValue < 0) {
+            alert('{{ _("request_interval_non_negative") }}');
+            return;
+        }
+        
+        // 显示加载中状态
+        $('#batchLoading').show();
+        $('#batchResult').hide();
+        
+        // 创建FormData并设置处理后的delay值
+        var formData = new FormData(this);
+        formData.set('delay', delayValue);
+        
+        $.ajax({
+            url: '/api/worldmove/batch',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    // 创建下载链接
+                    var downloadUrl = '/api/download/worldmove/' + encodeURIComponent(response.filename);
+                    $('#downloadLink').attr('href', downloadUrl);
+                    $('#batchResultMessage').text(response.message);
+                    $('#batchResult').show();
+                } else {
+                    alert('{{ _("processing_failed") }}: ' + response.error);
+                }
+                
+                // 隐藏加载中状态
+                $('#batchLoading').hide();
+            },
+            error: function(xhr) {
+                alert('{{ _("processing_failed") }}: ' + (xhr.responseJSON ? xhr.responseJSON.error : '{{ _("unknown_error") }}'));
+                // 隐藏加载中状态
+                $('#batchLoading').hide();
+            }
+        });
+    });
+    
+    // 单条请求表单提交处理
+    $('#singleForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        // 构建参数对象
+        var params = {
+            endpoint: $('#endpoint').val()
+        };
+        
+        // 获取所有参数
+        $('#paramsContainer input').each(function() {
+            var name = $(this).attr('name');
+            var value = $(this).val();
+            
+            if (name && value) {
+                // 处理数组参数
+                if (name.includes('[') && name.includes(']') && name.includes('[')) {
+                    var baseName = name.split('[')[0];
+                    var index = parseInt(name.match(/\[(\d+)\]/)[1]);
+                    var fieldName = name.match(/\[(\d+)\]\[(\w+)\]/)[2];
+                    
+                    if (!params[baseName]) {
+                        params[baseName] = [];
+                    }
+                    
+                    // 确保数组足够大
+                    while (params[baseName].length <= index) {
+                        params[baseName].push({});
+                    }
+                    
+                    // 设置字段值
+                    params[baseName][index][fieldName] = value;
+                } else {
+                    // 处理普通参数
+                    params[name] = value;
+                }
+            }
+        });
+        
+        // 打印调试信息
+        console.log("Sending params:", params);
+        
+        // 发送请求
+        $.ajax({
+            url: '/api/worldmove/single',
+            type: 'POST',
+            data: params,
+            success: function(response) {
+                try {
+                    // 尝试解析响应，如果是字符串形式的JSON，则解析它
+                    let parsedResponse = response;
+                    if (typeof response === 'string') {
+                        try {
+                            parsedResponse = JSON.parse(response);
+                        } catch (e) {
+                            // 如果不是有效的JSON，保持原样
+                        }
+                    }
+                    
+                    // 格式化显示
+                    $('#responseContent').text(JSON.stringify(parsedResponse, null, 2));
+                } catch (e) {
+                    // 如果出现错误，显示原始响应
+                    $('#responseContent').text(typeof response === 'object' ? JSON.stringify(response, null, 2) : response);
+                }
+                $('#singleResult').show();
+            },
+            error: function(xhr) {
+                $('#responseContent').text('{{ _("error") }}: ' + (xhr.responseJSON ? xhr.responseJSON.error : '{{ _("unknown_error") }}'));
+                $('#singleResult').show();
+            }
+        });
+    });
+    
+    // 加载Ngrok状态
+    function loadNgrokStatus() {
+        $.ajax({
+            url: '/api/ngrok/status',
+            type: 'GET',
+            success: function(status) {
+                var ngrokHtml = '';
+                if (status.active && status.public_url) {
+                    ngrokHtml = `
+                    <div class="alert alert-success">
+                        <h6>{{ _("worldmove_ngrok_active") }}</h6>
+                        <p>{{ _("worldmove_public_url") }}: <strong>${status.public_url}</strong></p>
+                        <p>{{ _("worldmove_callback_urls") }}:</p>
+                        <ul>
+                            <li>{{ _("worldmove_callback_esim_order") }}: <code>${status.callback_urls.esim_order}</code></li>
+                            <li>{{ _("worldmove_callback_esim_order_redeem") }}: <code>${status.callback_urls.esim_order_redeem}</code></li>
+                            <li>{{ _("worldmove_callback_redemption_code") }}: <code>${status.callback_urls.redemption_code}</code></li>
+                            <li>{{ _("worldmove_callback_top_up") }}: <code>${status.callback_urls.top_up}</code></li>
+                        </ul>
+                        <p>{{ _("worldmove_provide_urls") }}</p>
+                        <button class="btn btn-sm btn-danger" onclick="stopNgrok()">{{ _("worldmove_stop_ngrok") }}</button>
+                    </div>
+                    `;
+                } else {
+                    ngrokHtml = `
+                    <div class="alert alert-warning">
+                        <h6>{{ _("worldmove_ngrok_inactive") }}</h6>
+                        <p>{{ _("worldmove_local_only") }}</p>
+                        <button class="btn btn-sm btn-primary" onclick="startNgrok()">{{ _("worldmove_start_ngrok") }}</button>
+                    </div>
+                    `;
+                }
+                $('#ngrokStatusContent').html(ngrokHtml);
+            },
+            error: function() {
+                $('#ngrokStatusContent').html('<div class="alert alert-danger">{{ _("worldmove_cannot_connect") }}</div>');
+            }
+        });
+    }
+    
+    // 启动Ngrok隧道
+    window.startNgrok = function() {
+        // 显示加载状态
+        $('#ngrokStatusContent').html(`
+            <div class="alert alert-info">
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">{{ _("loading") }}</span>
+                </div>
+                {{ _("worldmove_starting_ngrok") }}
+            </div>
+        `);
+        
+        $.ajax({
+            url: '/api/ngrok/start',
+            type: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    // 启动成功后，延迟5秒再开始轮询状态
+                    setTimeout(function() {
+                        var pollCount = 0;
+                        var maxPolls = 30; // 最多轮询30次，约30秒
+                        
+                        var pollInterval = setInterval(function() {
+                            pollCount++;
+                            if (pollCount > maxPolls) {
+                                clearInterval(pollInterval);
+                                $('#ngrokStatusContent').html(`
+                                    <div class="alert alert-warning">
+                                        <h6>{{ _("worldmove_ngrok_timeout") }}</h6>
+                                        <p>{{ _("worldmove_ngrok_start_timeout_msg") }}</p>
+                                        <button class="btn btn-sm btn-outline-primary" onclick="loadNgrokStatus()">{{ _("refresh") }}</button>
+                                    </div>
+                                `);
+                                return;
+                            }
+                            
+                            $.ajax({
+                                url: '/api/ngrok/status',
+                                type: 'GET',
+                                success: function(status) {
+                                    if (status.active && status.public_url) {
+                                        clearInterval(pollInterval);
+                                        loadNgrokStatus(); // 更新状态显示
+                                    }
+                                    // 否则继续等待
+                                },
+                                error: function() {
+                                    // 忽略轮询错误，继续尝试
+                                }
+                            });
+                        }, 1000); // 每秒检查一次
+                    }, 5000); // 延迟5秒后再开始轮询
+                } else {
+                    $('#ngrokStatusContent').html(`
+                        <div class="alert alert-danger">
+                            <h6>{{ _("worldmove_ngrok_start_failed") }}</h6>
+                            <p>${response.message}</p>
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadNgrokStatus()">{{ _("refresh") }}</button>
+                        </div>
+                    `);
+                }
+            },
+            error: function() {
+                $('#ngrokStatusContent').html(`
+                    <div class="alert alert-danger">
+                        <h6>{{ _("worldmove_ngrok_start_failed") }}</h6>
+                        <p>{{ _("worldmove_cannot_connect") }}</p>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadNgrokStatus()">{{ _("refresh") }}</button>
+                    </div>
+                `);
+            }
+        });
+    };
+
+    // 停止Ngrok隧道
+    window.stopNgrok = function() {
+        // 显示加载状态
+        $('#ngrokStatusContent').html(`
+            <div class="alert alert-info">
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">{{ _("loading") }}</span>
+                </div>
+                {{ _("worldmove_stopping_ngrok") }}
+            </div>
+        `);
+        
+        $.ajax({
+            url: '/api/ngrok/stop',
+            type: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    // 停止成功后，延迟3秒再刷新状态
+                    setTimeout(function() {
+                        loadNgrokStatus();
+                    }, 3000);
+                } else {
+                    $('#ngrokStatusContent').html(`
+                        <div class="alert alert-danger">
+                            <h6>{{ _("worldmove_ngrok_stop_failed") }}</h6>
+                            <p>${response.message}</p>
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadNgrokStatus()">{{ _("refresh") }}</button>
+                        </div>
+                    `);
+                }
+            },
+            error: function() {
+                $('#ngrokStatusContent').html(`
+                    <div class="alert alert-danger">
+                        <h6>{{ _("worldmove_ngrok_stop_failed") }}</h6>
+                        <p>{{ _("worldmove_cannot_connect") }}</p>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadNgrokStatus()">{{ _("refresh") }}</button>
+                    </div>
+                `);
+            }
+        });
+    };
+
+    // 加载最近回调数据
+    window.loadRecentCallbacks = function() {
+        $.ajax({
+            url: '/api/worldmove/callback/recent',
+            type: 'GET',
+            success: function(callbacks) {
+                var callbacksHtml = '';
+                if (callbacks.length === 0) {
+                    callbacksHtml = '<div class="alert alert-info">{{ _("worldmove_no_callback_data") }}</div>';
+                } else {
+                    callbacks.forEach(function(callback, index) {
+                        callbacksHtml += `
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">${callback.endpoint} - ${callback.timestamp}</h6>
+                            </div>
+                            <div class="card-body">
+                                <pre class="p-2 bg-light rounded">${JSON.stringify(callback.data, null, 2)}</pre>
+                                <div class="mt-2">
+                                    <a href="/api/worldmove/callback/file/${callback.filename}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                        <i class="bi bi-download"></i> {{ _("worldmove_download_full_log") }}
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        `;
+                    });
+                }
+                $('#recentCallbacks').html(callbacksHtml);
+            },
+            error: function() {
+                $('#recentCallbacks').html('<div class="alert alert-danger">{{ _("worldmove_cannot_load_callbacks") }}</div>');
+            }
+        });
+    };
+
+    // 加载回调日志文件列表
+    window.loadCallbackFiles = function() {
+        $.ajax({
+            url: '/api/worldmove/callback/files',
+            type: 'GET',
+            success: function(files) {
+                var filesList = $('#callbackFiles');
+                filesList.empty();
+                
+                if (files.length === 0) {
+                    filesList.append('<div class="list-group-item">{{ _("worldmove_no_callback_files") }}</div>');
+                    return;
+                }
+                
+                files.forEach(function(file) {
+                    filesList.append(`
+                        <a href="/api/worldmove/callback/file/${file.name}" class="list-group-item list-group-item-action" target="_blank">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">${file.name}</h6>
+                                <small>${file.size}</small>
+                            </div>
+                            <p class="mb-1">{{ _("worldmove_modification_time") }}: ${file.mtime}</p>
+                        </a>
+                    `);
+                });
+            },
+            error: function() {
+                $('#callbackFiles').html('<div class="list-group-item">{{ _("worldmove_cannot_load_files") }}</div>');
+            }
+        });
+    };
+    
+    // 当切换到回调信息标签页时加载数据
+    $('#callbacks-tab').on('click', function() {
+        loadNgrokStatus();
+        loadRecentCallbacks();
+        loadCallbackFiles();
+    });
+    
+    // 初始加载
+    if ($('#callbacks').hasClass('active')) {
+        loadNgrokStatus();
+        loadRecentCallbacks();
+        loadCallbackFiles();
+    }
+    
+    // 每30秒自动刷新最近回调数据（仅当回调标签页激活时）
+    setInterval(function() {
+        if ($('#callbacks').hasClass('active')) {
+            loadRecentCallbacks();
+        }
+    }, 30000);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,643 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vendor_name }} {{ _('api_Operations') }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tab-pane {
+        padding: 20px;
+        border-left: 1px solid #dee2e6;
+        border-right: 1px solid #dee2e6;
+        border-bottom: 1px solid #dee2e6;
+        border-radius: 0 0 5px 5px;
+    }
+    .endpoint-info {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .param-row {
+        margin-bottom: 10px;
+        padding: 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+    }
+    .response-pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 500px;
+        overflow-y: auto;
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #e9ecef;
+    }
+    .multi-imsi-section {
+        background-color: #f8f9fa;
+        border: 2px dashed #dee2e6;
+    }
+    .multi-imsi-item {
+        border: 1px solid #ced4da;
+    }
+    .plmn-list-container {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+    .plmn-item {
+        padding: 5px;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .plmn-item:last-child {
+        border-bottom: none;
+    }   
+    .multi-imsi-section {
+        background-color: #f8f9fa;
+        border: 2px dashed #dee2e6;
+    }
+    .multi-imsi-item {
+        border: 1px solid #ced4da;
+    }
+    .mcc-list-container,
+    .plmn-list-container {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+    .mcc-item,
+    .plmn-item {
+        padding: 5px;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .mcc-item:last-child,
+    .plmn-item:last-child {
+        border-bottom: none;
+    }     
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>{{ vendor_name }} {{ _('api_Operations') }}</h2>
+        
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="single-tab" data-bs-toggle="tab" data-bs-target="#single" type="button" role="tab">
+                    <i class="bi bi-play-circle"></i> {{ _('single_request') }}
+                </button>            
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="batch-tab" data-bs-toggle="tab" data-bs-target="#batch" type="button" role="tab">
+                    <i class="bi bi-collection-play"></i> {{ _('batch_processing') }}
+                </button>
+            </li>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="myTabContent">
+            <!-- 批量处理标签页 -->
+            <div class="tab-pane fade" id="batch" role="tabpanel">
+                <div class="alert alert-info">
+                    <h5>{{ _('batch_title') }}</h5>
+                    <p>{{ _('simlessly_batch_description') }}</p>
+                    <ul>
+                        <li><strong>endpoint</strong>: {{ _('api_endpoint') }}</li>
+                        <li><strong>iccid</strong>: {{ _('imsi_number_or_range') }}</li>
+                        <li>{{ _('other_required_parameters') }}</li>
+                    </ul>
+                    <p>{{ _('simlessly_batch_note') }}</p>
+                    <p><strong>{{ _('note') }}:</strong> {{ _('simlessly_dot_notation') }}</p>
+                    <!-- 添加模板下载按钮 -->
+                    <div class="mt-3">
+                        <a href="/api/template/simlessly" class="btn btn-success">
+                            <i class="bi bi-download"></i> {{ _('download_template') }}
+                        </a>
+                        <small class="text-muted ms-2">{{ _('template_note') }}</small>
+                    </div>                                          
+                </div>
+                
+                <form id="batchForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="batchFile" class="form-label">{{ _('select_Excel_File') }}</label>
+                        <input class="form-control" type="file" id="batchFile" name="file" accept=".xlsx,.xls">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="delay" class="form-label">{{ _('request_interval') }}</label>
+                        <input type="number" class="form-control" id="delay" name="delay" value="0.5" step="0.1" min="0">
+                        <div class="form-text">{{ _('request_interval_note') }}</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-play-fill"></i> {{ _('start_processing') }}
+                    </button>
+                </form>
+                
+                <div id="batchLoading" class="mt-3" style="display: none;">
+                    <div class="alert alert-info">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">{{ _('loading') }}</span>
+                        </div>
+                        {{ _('processing_please_wait') }}
+                    </div>
+                </div>
+                
+                <div id="batchResult" class="mt-3" style="display: none;">
+                    <div class="alert alert-success">
+                        <h5>{{ _('process_completed') }}</h5>
+                        <p id="batchResultMessage"></p>
+                        <p>{{ _('result_file_generated') }}<a id="downloadLink" href="#" class="btn btn-success btn-sm">{{ _('click_to_download') }}</a></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 单条请求标签页 -->
+            <div class="tab-pane fade show active" id="single" role="tabpanel">
+                <div class="alert alert-info">
+                    <h5>{{ _('single_title') }}</h5>
+                    <p>{{ _('simlessly_single_description') }}</p>
+                </div>
+                
+                <form id="singleForm">
+                    <div class="mb-3">
+                        <label for="endpoint" class="form-label">{{ _('api_endpoint') }}</label>
+                        <select class="form-select" id="endpoint" name="endpoint" required>
+                            <option value="">{{ _('select_endpoint') }}</option>
+                            {% for endpoint in endpoints %}
+                            <option value="{{ endpoint }}">{{ endpoint }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div id="endpointInfo" class="endpoint-info" style="display: none">
+                        <h6>{{ _('enpoint_info') }}</h6>
+                        <p id="endpointDescription"></p>
+                    </div>
+
+                    <div id="paramsContainer">
+                        <!-- 参数将在这里动态生成 -->
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary d-block mt-3">
+                        <i class="bi bi-send"></i> {{ _('send_request') }}
+                    </button>
+                </form>
+                
+                <div id="singleResult" class="mt-3" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">{{ _('response_result') }}</div>
+                        <div class="card-body">
+                            <pre id="responseContent" class="response-pre"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Simlessly端点信息映射
+var simlesslyEndpointInfo = {
+    "profile/detail": "{{ _('simlessly_endpoint_profile_detail') }}",
+    "profile/log": "{{ _('simlessly_endpoint_profile_log') }}", 
+    "profile/delete": "{{ _('simlessly_endpoint_profile_delete') }}",
+    "profile/updateParam": "{{ _('simlessly_endpoint_profile_updateParam') }}",    
+    "ac/generate": "{{ _('simlessly_endpoint_ac_generate') }}"
+};
+
+// 生成函数，处理数组类型的参数
+function generateParamInputs(params, container) {
+    container.empty();
+    
+    if (params.length === 0) {
+        container.append('<div class="alert alert-info">{{ _("simlessly_no_extra_params") }}</div>');
+        return;
+    }
+    
+    // 为每个参数创建输入框
+    params.forEach(function(param) {
+        var paramName = param.name;
+        var displayName = paramName;
+        
+        // 如果参数名包含点号，显示最后一部分作为标签
+        if (paramName.includes('.')) {
+            var parts = paramName.split('.');
+            displayName = parts[parts.length - 1];
+        }
+        
+        var description = param.description;
+        var placeholder = "{{ _('enter_parameter_value') }} " + displayName;
+        
+        // 检查是否是列表参数
+        if (paramName.toLowerCase().includes('list') && paramName !== 'multiImsiDataList') {
+            description += ' {{ _("simlessly_list_param_note") }}';
+            placeholder = '{{ _("simlessly_list_param_example") }}';
+        }
+        
+        // 特殊处理 multiImsiDataList
+        if (paramName === 'multiImsiDataList') {
+            var multiImsiSection = `
+                <div class="param-row mb-3 multi-imsi-section">
+                    <label class="form-label">
+                        ${displayName} ${param.required ? '<span class="text-danger">*</span>' : ''}
+                    </label>
+                    <small class="form-text text-muted d-block">${description}</small>
+                    <div class="alert alert-info">
+                        <small>{{ _("simlessly_multi_imsi_note") }}</small>
+                    </div>
+                    <div id="multiImsiContainer">
+                        <!-- Multi IMSI 项目将在这里动态添加 -->
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addMultiImsiItem()">
+                        <i class="bi bi-plus-circle"></i> {{ _("simlessly_add_multi_imsi") }}
+                    </button>
+                </div>`;
+            container.append(multiImsiSection);
+            return;
+        }
+        
+        var paramRow = `
+            <div class="param-row mb-3">
+                <label for="param_${paramName}" class="form-label">
+                    ${displayName} ${param.required ? '<span class="text-danger">*</span>' : ''}
+                </label>
+                <small class="form-text text-muted d-block">${description}</small>
+                <input type="${param.type === 'integer' ? 'number' : 'text'}" 
+                       class="form-control" 
+                       id="param_${paramName}" 
+                       name="${paramName}" 
+                       ${param.required ? "required" : ""}
+                       placeholder="${placeholder}"
+                       ${param.type === 'integer' ? 'step="1"' : ''}>
+            </div>`;
+        container.append(paramRow);
+    });
+}
+
+// 添加 Multi IMSI 项目的函数
+function addMultiImsiItem(index = null) {
+    var container = $('#multiImsiContainer');
+    var itemIndex = index !== null ? index : container.children('.multi-imsi-item').length;
+    
+    var multiImsiItem = `
+        <div class="multi-imsi-item card mb-3" data-index="${itemIndex}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>{{ _("simlessly_multi_imsi_title") }} #${itemIndex + 1}</strong>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMultiImsiItem(${itemIndex})">
+                    <i class="bi bi-trash"></i> {{ _("simlessly_remove_multi_imsi") }}
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label">{{ _("simlessly_imsi") }}</label>
+                        <input type="text" class="form-control multi-imsi-imsi" 
+                               placeholder="Input IMSI">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">{{ _("simlessly_mcc_list") }}</label>
+                        <div class="mcc-list-container">
+                            <!-- MCC items will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mt-2" onclick="addMccItem(${itemIndex})">
+                            <i class="bi bi-plus"></i> {{ _("simlessly_add_mcc") }}
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- PLMN Lists -->
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h6>{{ _("simlessly_plmn_list") }}</h6>
+                        <div class="plmn-list-container" data-type="plmnList">
+                            <!-- PLMN items will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPlmnItem(${itemIndex}, 'plmnList')">
+                            <i class="bi bi-plus"></i> {{ _("simlessly_add_plmn") }}
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h6>{{ _("simlessly_hplmn_list") }}</h6>
+                        <div class="plmn-list-container" data-type="hplmnList">
+                            <!-- HPLMN items will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPlmnItem(${itemIndex}, 'hplmnList')">
+                            <i class="bi bi-plus"></i> {{ _("simlessly_add_plmn") }}
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h6>{{ _("simlessly_fplmn_list") }}</h6>
+                        <div class="plmn-list-container" data-type="fplmnList">
+                            <!-- FPLMN items will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPlmnItem(${itemIndex}, 'fplmnList')">
+                            <i class="bi bi-plus"></i> {{ _("simlessly_add_plmn") }}
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h6>{{ _("simlessly_ehplmn_list") }}</h6>
+                        <div class="plmn-list-container" data-type="ehplmnList">
+                            <!-- EHPLMN items will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPlmnItem(${itemIndex}, 'ehplmnList')">
+                            <i class="bi bi-plus"></i> {{ _("simlessly_add_plmn") }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    
+    if (index !== null) {
+        // 插入到指定位置
+        var existingItem = container.find('.multi-imsi-item[data-index="' + index + '"]');
+        if (existingItem.length) {
+            existingItem.before(multiImsiItem);
+            existingItem.remove();
+        } else {
+            container.append(multiImsiItem);
+        }
+    } else {
+        container.append(multiImsiItem);
+    }
+    
+    // 为每个列表类型添加一个初始的项目
+    addMccItem(itemIndex);
+    ['plmnList', 'hplmnList', 'fplmnList', 'ehplmnList'].forEach(function(listType) {
+        addPlmnItem(itemIndex, listType);
+    });
+}
+
+// 移除 Multi IMSI 项目的函数
+function removeMultiImsiItem(index) {
+    $(`.multi-imsi-item[data-index="${index}"]`).remove();
+    // 重新索引剩余的项目
+    $('#multiImsiContainer .multi-imsi-item').each(function(newIndex) {
+        $(this).attr('data-index', newIndex);
+        $(this).find('.card-header strong').text('{{ _("simlessly_multi_imsi_title") }} #' + (newIndex + 1));
+    });
+}
+
+// 添加 MCC 项目的函数
+function addMccItem(multiImsiIndex, mccValue = '') {
+    var container = $(`.multi-imsi-item[data-index="${multiImsiIndex}"] .mcc-list-container`);
+    var mccIndex = container.children('.mcc-item').length;
+    
+    var mccItem = `
+        <div class="mcc-item row mb-2" data-index="${mccIndex}">
+            <div class="col-md-10">
+                <input type="text" class="form-control mcc-value" 
+                       value="${mccValue}"
+                       placeholder="MCC (e.g. 260)">
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMccItem(${multiImsiIndex}, ${mccIndex})">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        </div>`;
+    
+    container.append(mccItem);
+}
+
+// 移除 MCC 项目的函数
+function removeMccItem(multiImsiIndex, mccIndex) {
+    $(`.multi-imsi-item[data-index="${multiImsiIndex}"] .mcc-list-container .mcc-item[data-index="${mccIndex}"]`).remove();
+    // 重新索引剩余的MCC项目
+    $(`.multi-imsi-item[data-index="${multiImsiIndex}"] .mcc-list-container .mcc-item`).each(function(newIndex) {
+        $(this).attr('data-index', newIndex);
+    });
+}
+
+// 添加 PLMN 项目的函数
+function addPlmnItem(multiImsiIndex, listType) {
+    var container = $(`.multi-imsi-item[data-index="${multiImsiIndex}"] .plmn-list-container[data-type="${listType}"]`);
+    var plmnIndex = container.children('.plmn-item').length;
+    
+    var plmnItem = `
+        <div class="plmn-item row mb-2" data-index="${plmnIndex}">
+            <div class="col-md-5">
+                <input type="text" class="form-control plmn-value" 
+                       placeholder="{{ _('simlessly_plmn') }} (e.g. 45400)">
+            </div>
+            <div class="col-md-5">
+                <input type="text" class="form-control rat-value" 
+                       value="4000"
+                       placeholder="{{ _('simlessly_rat_placeholder') }}">
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removePlmnItem(${multiImsiIndex}, '${listType}', ${plmnIndex})">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        </div>`;
+    
+    container.append(plmnItem);
+}
+
+// 移除 PLMN 项目的函数
+function removePlmnItem(multiImsiIndex, listType, plmnIndex) {
+    $(`.multi-imsi-item[data-index="${multiImsiIndex}"] .plmn-list-container[data-type="${listType}"] .plmn-item[data-index="${plmnIndex}"]`).remove();
+    // 重新索引剩余的PLMN项目
+    $(`.multi-imsi-item[data-index="${multiImsiIndex}"] .plmn-list-container[data-type="${listType}"] .plmn-item`).each(function(newIndex) {
+        $(this).attr('data-index', newIndex);
+    });
+}
+
+// 收集 Multi IMSI 数据的函数
+function collectMultiImsiData() {
+    var multiImsiDataList = [];
+    
+    $('.multi-imsi-item').each(function() {
+        var imsi = $(this).find('.multi-imsi-imsi').val();
+        
+        // 只有当有数据时才添加
+        if (imsi) {
+            // 收集 MCC 列表
+            var mccList = [];
+            $(this).find('.mcc-list-container .mcc-value').each(function() {
+                var mcc = $(this).val();
+                if (mcc) {
+                    mccList.push(mcc);
+                }
+            });
+            
+            var multiImsiData = {
+                imsi: imsi,
+                mccList: mccList
+            };
+            
+            // 收集各种PLMN列表
+            ['plmnList', 'hplmnList', 'fplmnList', 'ehplmnList'].forEach(function(listType) {
+                var plmnList = [];
+                $(this).find('.plmn-list-container[data-type="' + listType + '"] .plmn-item').each(function() {
+                    var plmn = $(this).find('.plmn-value').val();
+                    var rat = $(this).find('.rat-value').val();
+                    if (plmn && rat) {
+                        plmnList.push({
+                            plmn: plmn,
+                            rat: rat
+                        });
+                    }
+                });
+                multiImsiData[listType] = plmnList;
+            }.bind(this));
+            
+            multiImsiDataList.push(multiImsiData);
+        }
+    });
+    
+    return multiImsiDataList.length > 0 ? multiImsiDataList : null;
+}
+
+$(document).ready(function() {
+    // 端点选择变化事件
+    $("#endpoint").change(function() {
+        var endpoint = $(this).val();
+        
+        // 清除之前的响应结果
+        $("#singleResult").hide();
+        $("#responseContent").text("");
+        
+        if (endpoint) {
+            $("#endpointInfo").show();
+            $("#endpointDescription").text(simlesslyEndpointInfo[endpoint] || "{{ _('no_description_available') }}");
+            
+            // 通过AJAX获取端点参数
+            $.ajax({
+                url: '/api/simlessly/endpoint/' + encodeURIComponent(endpoint) + '/params',
+                type: 'GET',
+                success: function(params) {
+                    generateParamInputs(params, $("#paramsContainer"));
+                },
+                error: function(xhr) {
+                    $("#paramsContainer").html('<div class="alert alert-danger">{{ _("simlessly_get_params_failed") }}: ' + (xhr.responseJSON ? xhr.responseJSON.error : '{{ _("unknown_error") }}') + '</div>');
+                }
+            });
+        } else {
+            $("#endpointInfo").hide();
+            $("#paramsContainer").empty();
+        }
+    });
+    
+    // 批量处理表单提交
+    $('#batchForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        // 获取并处理delay值
+        var delayInput = $('#delay').val();
+        var delayValue = delayInput === '' ? 0 : parseFloat(delayInput);
+        
+        // 确保delay值是非负数
+        if (isNaN(delayValue) || delayValue < 0) {
+            alert('{{ _("request_interval_non_negative") }}');
+            return;
+        }
+        
+        // 显示加载中状态
+        $('#batchLoading').show();
+        $('#batchResult').hide();
+        
+        // 创建FormData并设置处理后的delay值
+        var formData = new FormData(this);
+        formData.set('delay', delayValue);
+        
+        $.ajax({
+            url: '/api/simlessly/batch',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    // 创建下载链接
+                    var downloadUrl = '/api/download/simlessly/' + encodeURIComponent(response.filename);
+                    $('#downloadLink').attr('href', downloadUrl);
+                    $('#batchResultMessage').text(response.message);
+                    $('#batchResult').show();
+                } else {
+                    alert('{{ _("processing_failed") }}: ' + response.error);
+                }
+                
+                // 隐藏加载中状态
+                $('#batchLoading').hide();
+            },
+            error: function(xhr) {
+                alert('{{ _("processing_failed") }}: ' + (xhr.responseJSON ? xhr.responseJSON.error : '{{ _("unknown_error") }}'));
+                // 隐藏加载中状态
+                $('#batchLoading').hide();
+            }
+        });
+    });
+    
+    // 单条请求表单提交
+    $('#singleForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        // 构建参数对象
+        var params = {
+            endpoint: $("#endpoint").val()
+        };
+        
+        // 获取所有普通参数
+        $("#paramsContainer input").each(function() {
+            var name = $(this).attr("name");
+            var value = $(this).val();
+            
+            if (name && value && name !== 'multiImsiDataList') {
+                params[name] = value;
+            }
+        });
+        
+        // 特殊处理 multiImsiDataList
+        var multiImsiData = collectMultiImsiData();
+        if (multiImsiData && multiImsiData.length > 0) {
+            params.multiImsiDataList = JSON.stringify(multiImsiData);
+        }
+        
+        // 发送请求
+        $.ajax({
+            url: '/api/simlessly/single',
+            type: 'POST',
+            data: params,
+            success: function(response) {
+                try {
+                    let parsedResponse = response;
+                    if (typeof response === 'string') {
+                        try {
+                            parsedResponse = JSON.parse(response);
+                        } catch (e) {
+                            // 如果不是有效的JSON，保持原样
+                        }
+                    }
+                    
+                    $('#responseContent').text(JSON.stringify(parsedResponse, null, 2));
+                } catch (e) {
+                    $('#responseContent').text(typeof response === 'object' ? JSON.stringify(response, null, 2) : response);
+                }
+                $('#singleResult').show();
+            },
+            error: function(xhr, status, error) {
+                $('#responseContent').text('错误: ' + (xhr.responseJSON ? xhr.responseJSON.error : error));
+                $('#singleResult').show();
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,685 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('sim_resource_management') }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-filter-group {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    
+    .input-group-clear .btn-clear {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-left: 0;
+    }
+    
+    .sortable-header {
+        cursor: pointer;
+        user-select: none;
+    }
+    
+    .sortable-header:hover {
+        background-color: #f0f0f0;
+    }
+    
+    .sort-icon {
+        font-size: 0.8em;
+        margin-left: 5px;
+    }
+    
+    /* 表格響應式設計 */
+    .table-responsive {
+        overflow-x: auto;
+    }
+    
+    /* 按鈕組樣式 */
+    .btn-group-sm .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">{{ _('sim_resource_management') }}</h2>
+
+<!-- 右上角按鈕群 -->
+<div class="d-flex justify-content-between mb-3">
+    <div class="search-stats">
+        <span class="badge bg-info">
+            共 {{ pagination.total }} 筆資料
+        </span>
+    </div>
+    <div class="btn-group">
+        <a href="/api/template/sim_resources" class="btn btn-info me-2">
+            <i class="bi bi-download"></i> {{ _('download_template') }}
+        </a>
+        <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#importModal">
+            <i class="bi bi-upload"></i> {{ _('import_resources') }}
+        </button>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
+            <i class="bi bi-plus"></i> {{ _('add_resource') }}
+        </button>
+    </div>
+</div>
+
+<!-- 搜索表單 -->
+<div class="search-filter-group">
+    <form class="mb-4" method="GET" id="searchForm">
+        <div class="row mb-3 g-2">
+            <!-- Provider -->
+            <div class="col-md-3">
+                <label class="form-label small">Provider</label>
+                <div class="input-group input-group-clear">
+                    <select name="provider" class="form-control form-control-sm">
+                        <option value="">所有供應商</option>
+                        {% for provider in options.providers %}
+                        <option value="{{ provider }}" 
+                            {% if search_params.provider == provider %}selected{% endif %}>
+                            {{ provider }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('provider')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- CardType -->
+            <div class="col-md-3">
+                <label class="form-label small">CardType</label>
+                <div class="input-group input-group-clear">
+                    <select name="card_type" class="form-control form-control-sm">
+                        <option value="">所有類型</option>
+                        {% for card_type in options.card_types %}
+                        <option value="{{ card_type }}" 
+                            {% if search_params.card_type == card_type %}selected{% endif %}>
+                            {{ card_type }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('card_type')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- ResourcesType -->
+            <div class="col-md-3">
+                <label class="form-label small">ResourcesType</label>
+                <div class="input-group input-group-clear">
+                    <select name="resources_type" class="form-control form-control-sm">
+                        <option value="">所有資源類型</option>
+                        {% for rt in options.resources_types %}
+                        <option value="{{ rt }}" 
+                            {% if search_params.resources_type == rt %}selected{% endif %}>
+                            {{ rt }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('resources_type')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Batch -->
+            <div class="col-md-3">
+                <label class="form-label small">Batch</label>
+                <div class="input-group input-group-clear">
+                    <input type="text" name="batch" class="form-control form-control-sm" 
+                           placeholder="批次號" value="{{ search_params.batch }}">
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('batch')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mb-3 g-2">
+            <!-- ReceivedDate -->
+            <div class="col-md-3">
+                <label class="form-label small">ReceivedDate</label>
+                <div class="input-group input-group-clear">
+                    <input type="text" name="received_date" class="form-control form-control-sm" 
+                           placeholder="yyyymmdd" value="{{ search_params.received_date }}">
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('received_date')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- IMSI -->
+            <div class="col-md-3">
+                <label class="form-label small">IMSI</label>
+                <div class="input-group input-group-clear">
+                    <input type="text" name="imsi" class="form-control form-control-sm" 
+                           placeholder="IMSI" value="{{ search_params.imsi }}">
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('imsi')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- ICCID -->
+            <div class="col-md-3">
+                <label class="form-label small">ICCID</label>
+                <div class="input-group input-group-clear">
+                    <input type="text" name="iccid" class="form-control form-control-sm" 
+                           placeholder="ICCID" value="{{ search_params.iccid }}">
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('iccid')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- MSISDN -->
+            <div class="col-md-3">
+                <label class="form-label small">MSISDN</label>
+                <div class="input-group input-group-clear">
+                    <input type="text" name="msisdn" class="form-control form-control-sm" 
+                           placeholder="MSISDN" value="{{ search_params.msisdn }}">
+                    <button class="btn btn-outline-secondary btn-sm btn-clear" type="button" onclick="clearFilter('msisdn')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-12 text-end">
+                <button type="submit" class="btn btn-primary btn-sm me-2">
+                    <i class="bi bi-search"></i> {{ _('search') }}
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="clearAllFilters()">
+                    <i class="bi bi-eraser"></i> 清除所有
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- 資源列表表格 -->
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th class="sortable-header" onclick="sortTable('supplier')">
+                    Provider
+                    {% if search_params.sort == 'supplier' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('type')">
+                    CardType
+                    {% if search_params.sort == 'type' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('resources_type')">
+                    ResourcesType
+                    {% if search_params.sort == 'resources_type' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('batch')">
+                    Batch
+                    {% if search_params.sort == 'batch' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('received_date')">
+                    ReceivedDate
+                    {% if search_params.sort == 'received_date' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('imsi')">
+                    IMSI
+                    {% if search_params.sort == 'imsi' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('iccid')">
+                    ICCID
+                    {% if search_params.sort == 'iccid' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th class="sortable-header" onclick="sortTable('msisdn')">
+                    MSISDN
+                    {% if search_params.sort == 'msisdn' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                <th>{{ _('actions') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for res in resources %}
+            <tr>
+                <td>{{ res.supplier }}</td>
+                <td><span class="badge bg-{% if res.type == 'Physical SIM' %}primary{% elif res.type == 'eSIM' %}success{% else %}warning{% endif %}">{{ res.type }}</span></td>
+                <td>{{ res.resources_type or '' }}</td>
+                <td>{{ res.batch or '' }}</td>
+                <td>{{ res.received_date or '' }}</td>
+                <td><code>{{ res.imsi or '' }}</code></td>
+                <td><code>{{ res.iccid or '' }}</code></td>
+                <td>{{ res.msisdn or '' }}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-warning edit-btn"
+                            data-id="{{ res.id }}"
+                            data-provider="{{ res.supplier }}"
+                            data-cardtype="{{ res.type }}"
+                            data-resourcestype="{{ res.resources_type or '' }}"
+                            data-batch="{{ res.batch or '' }}"
+                            data-receiveddate="{{ res.received_date or '' }}"
+                            data-imsi="{{ res.imsi or '' }}"
+                            data-iccid="{{ res.iccid or '' }}"
+                            data-msisdn="{{ res.msisdn or '' }}"
+                            data-ki="{{ res.ki or '' }}"
+                            data-opc="{{ res.opc or '' }}"
+                            data-lpa="{{ res.lpa or '' }}"
+                            data-pin1="{{ res.pin1 or '' }}"
+                            data-puk1="{{ res.puk1 or '' }}"
+                            data-pin2="{{ res.pin2 or '' }}"
+                            data-puk2="{{ res.puk2 or '' }}">
+                            <i class="bi bi-pencil"></i> {{ _('edit') }}
+                        </button>
+                        <button class="btn btn-danger delete-btn" data-id="{{ res.id }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 處理分頁 -->
+{% if pagination.pages > 1 %}
+<nav>
+    <ul class="pagination justify-content-center">
+        {% if pagination.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="goToPage({{ pagination.prev_num }}); return false;">
+                    {{ _('previous') }}
+                </a>
+            </li>
+        {% endif %}
+        
+        <li class="page-item disabled">
+            <a class="page-link">
+                頁碼 {{ pagination.page }} / {{ pagination.pages }}
+            </a>
+        </li>
+        
+        {% if pagination.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="goToPage({{ pagination.next_num }}); return false;">
+                    {{ _('next') }}
+                </a>
+            </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+<!-- 添加/編輯模態框 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">{{ _('add_resource') }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="resourceForm">
+                    <input type="hidden" id="editId">
+                    
+                    <!-- A-H 必填 -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Provider *</label>
+                            <select id="provider" class="form-control" required>
+                                <option value="">請選擇供應商</option>
+                                {% for provider in options.providers %}
+                                <option value="{{ provider }}">{{ provider }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">CardType *</label>
+                            <select id="cardType" class="form-control" required>
+                                <option value="">請選擇卡類型</option>
+                                {% for card_type in options.card_types %}
+                                <option value="{{ card_type }}">{{ card_type }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">ResourcesType *</label>
+                            <select id="resourcesType" class="form-control" required>
+                                <option value="">請選擇資源類型</option>
+                                {% for rt in options.resources_types %}
+                                <option value="{{ rt }}">{{ rt }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Batch *</label>
+                            <input type="text" id="batch" class="form-control" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">ReceivedDate (yyyymmdd) *</label>
+                            <input type="text" id="receivedDate" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">IMSI *</label>
+                            <input type="text" id="imsi" class="form-control" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">ICCID *</label>
+                            <input type="text" id="iccid" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">MSISDN *</label>
+                            <input type="text" id="msisdn" class="form-control" required>
+                        </div>
+                    </div>
+                    
+                    <!-- I-K 條件顯示 -->
+                    <div id="conditionalFields">
+                        <!-- Soft Profile 字段 -->
+                        <div class="row mb-3 softprofile-fields d-none">
+                            <div class="col-md-6">
+                                <label class="form-label">Ki *</label>
+                                <input type="text" id="ki" class="form-control">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">OPC *</label>
+                                <input type="text" id="opc" class="form-control">
+                            </div>
+                        </div>
+                        
+                        <!-- eSIM 字段 -->
+                        <div class="row mb-3 esim-fields d-none">
+                            <div class="col-md-12">
+                                <label class="form-label">LPA *</label>
+                                <input type="text" id="lpa" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- L-O 選填 -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label">PIN1</label>
+                            <input type="text" id="pin1" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">PUK1</label>
+                            <input type="text" id="puk1" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">PIN2</label>
+                            <input type="text" id="pin2" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">PUK2</label>
+                            <input type="text" id="puk2" class="form-control">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" id="saveResourceBtn" class="btn btn-primary">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 導入模態框 -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importModalLabel">{{ _('import_resources') }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 
+                    {{ _('import_tip') }}
+                </div>
+                
+                <form id="importForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="importFile" class="form-label">{{ _('choose_file') }}</label>
+                        <input type="file" class="form-control" id="importFile" name="file" accept=".xlsx,.xls" required>
+                    </div>
+                    
+                    <div id="importResult" class="mt-3" style="display: none;">
+                        <div class="alert alert-success" id="successMessage" style="display: none;"></div>
+                        <div class="alert alert-warning" id="warningMessage" style="display: none;"></div>
+                        <div class="alert alert-danger" id="errorMessage" style="display: none;"></div>
+                        
+                        <div id="importDetails" style="display: none;">
+                            <h6>{{ _('import_details') }}:</h6>
+                            <div id="duplicateList"></div>
+                            <div id="errorList"></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('cancel') }}</button>
+                <button type="button" class="btn btn-primary" id="submitImportBtn">{{ _('import') }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 模板函數：構建分頁URL
+function build_pagination_url(page) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', page);
+    return `?${params.toString()}`;
+}
+
+// 排序函數
+function sortTable(field) {
+    const params = new URLSearchParams(window.location.search);
+    const currentSort = params.get('sort');
+    const currentOrder = params.get('order');
+    
+    if (currentSort === field) {
+        // 切換排序方向
+        params.set('order', currentOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+        // 新字段排序
+        params.set('sort', field);
+        params.set('order', 'asc');
+    }
+    
+    // 移除page參數，回到第一頁
+    params.delete('page');
+    
+    window.location.href = `?${params.toString()}`;
+}
+
+// 清空過濾器
+function clearFilter(field) {
+    const params = new URLSearchParams(window.location.search);
+    params.delete(field);
+    params.delete('page'); // 回到第一頁
+    window.location.href = `?${params.toString()}`;
+}
+
+function clearAllFilters() {
+    window.location.href = '/resources';
+}
+
+function goToPage(page) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', page);
+    window.location.href = `?${params.toString()}`;
+}
+
+$(document).ready(function() {
+    // Provider 改變時更新資源類型
+    $('#provider').change(function() {
+        const provider = $(this).val();
+        const presetTypes = {
+            'Quadcell': ['Prepaid', 'Postpaid', 'Data Only'],
+            'Montnet': ['MNT000', 'MNT001', 'MNT002']
+        };
+        
+        const resourcesTypeSelect = $('#resourcesType');
+        resourcesTypeSelect.empty().append('<option value="">請選擇資源類型</option>');
+        
+        const types = presetTypes[provider] || ['Default'];
+        types.forEach(type => {
+            resourcesTypeSelect.append(`<option value="${type}">${type}</option>`);
+        });
+    });
+    
+    // CardType 變動時顯示/隱藏條件字段
+    $('#cardType').change(function() {
+        const type = $(this).val();
+        
+        // 隱藏所有條件字段
+        $('.softprofile-fields, .esim-fields').addClass('d-none');
+        $('#ki, #opc, #lpa').removeAttr('required');
+        
+        if (type === 'Soft Profile') {
+            $('.softprofile-fields').removeClass('d-none');
+            $('#ki, #opc').attr('required', true);
+        } else if (type === 'eSIM') {
+            $('.esim-fields').removeClass('d-none');
+            $('#lpa').attr('required', true);
+        }
+    });
+
+    // 提交表單
+    $('#saveResourceBtn').click(function() {
+        const data = {
+            Provider: $('#provider').val().trim(),
+            CardType: $('#cardType').val().trim(),
+            ResourcesType: $('#resourcesType').val().trim(),
+            Batch: $('#batch').val().trim(),
+            ReceivedDate: $('#receivedDate').val().trim(),
+            IMSI: $('#imsi').val().trim(),
+            ICCID: $('#iccid').val().trim(),
+            MSISDN: $('#msisdn').val().trim(),
+            Ki: $('#ki').val().trim(),
+            OPC: $('#opc').val().trim(),
+            LPA: $('#lpa').val().trim(),
+            PIN1: $('#pin1').val().trim(),
+            PUK1: $('#puk1').val().trim(),
+            PIN2: $('#pin2').val().trim(),
+            PUK2: $('#puk2').val().trim()
+        };
+        
+        const editId = $('#editId').val();
+        const url = editId ? `/api/resources/edit/${editId}` : '/api/resources/add';
+        
+        $.ajax({
+            url: url,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(res) {
+                if (res.success) {
+                    $('#addModal').modal('hide');
+                    location.reload();
+                } else {
+                    alert('保存失敗：' + (res.error || '未知錯誤'));
+                }
+            },
+            error: function(err) {
+                const errorMsg = err.responseJSON ? err.responseJSON.error : '未知錯誤';
+                alert('保存失敗！詳細原因：' + errorMsg);
+            }
+        });
+    });
+
+    // 編輯按鈕填充數據
+    $('.edit-btn').click(function() {
+        const modal = $('#addModal');
+        modal.find('.modal-title').text('編輯資源');
+        
+        $('#editId').val($(this).data('id'));
+        $('#provider').val($(this).data('provider')).trigger('change');
+        
+        // 設置資源類型（需要等待provider更新）
+        setTimeout(() => {
+            $('#resourcesType').val($(this).data('resourcestype'));
+        }, 100);
+        
+        $('#cardType').val($(this).data('cardtype')).trigger('change');
+        $('#batch').val($(this).data('batch'));
+        $('#receivedDate').val($(this).data('receiveddate'));
+        $('#imsi').val($(this).data('imsi'));
+        $('#iccid').val($(this).data('iccid'));
+        $('#msisdn').val($(this).data('msisdn'));
+        
+        // 設置條件字段
+        setTimeout(() => {
+            if ($(this).data('cardtype') === 'Soft Profile') {
+                $('#ki').val($(this).data('ki'));
+                $('#opc').val($(this).data('opc'));
+            } else if ($(this).data('cardtype') === 'eSIM') {
+                $('#lpa').val($(this).data('lpa'));
+            }
+        }, 100);
+        
+        // 設置PIN/PUK（可見）
+        $('#pin1').val($(this).data('pin1'));
+        $('#puk1').val($(this).data('puk1'));
+        $('#pin2').val($(this).data('pin2'));
+        $('#puk2').val($(this).data('puk2'));
+        
+        modal.modal('show');
+    });
+
+    // 刪除按鈕
+    $('.delete-btn').click(function() {
+        if (confirm('{{ _("confirm_delete") }}')) {
+            const id = $(this).data('id');
+            $.post(`/api/resources/delete/${id}`, function() {
+                location.reload();
+            });
+        }
+    });
+    
+    // 模態框關閉時重置
+    $('#addModal').on('hidden.bs.modal', function() {
+        $('#resourceForm')[0].reset();
+        $('#editId').val('');
+        $('#modalTitle').text('{{ _("add_resource") }}');
+        $('.softprofile-fields, .esim-fields').addClass('d-none');
+    });
+});
+</script>
+{% endblock %}

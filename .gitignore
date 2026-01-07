@@ -1,0 +1,17 @@
+# Python 特定忽略規則
+__pycache__/
+
+# 虛擬環境
+venv/
+
+# IDE 和編輯器設定
+.vscode/
+
+# 日誌檔案
+*.log
+uploads/
+CallbackLogs/
+
+# 啓動項目
+auto_start_app.vbs - 捷徑.lnk
+service_manager.bat

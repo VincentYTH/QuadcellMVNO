@@ -1,0 +1,827 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vendor_name }} API操作{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tab-pane {
+        padding: 20px;
+        border-left: 1px solid #dee2e6;
+        border-right: 1px solid #dee2e6;
+        border-bottom: 1px solid #dee2e6;
+        border-radius: 0 0 5px 5px;
+    }
+    .endpoint-info {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .param-row {
+        margin-bottom: 10px;
+        padding: 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+    }
+    .response-pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 500px;
+        overflow-y: auto;
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #e9ecef;
+    }
+    .debug-pre {
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: #f0f0f0;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    font-size: 0.9em;
+    font-family: 'Courier New', monospace;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>{{ vendor_name }} {{ _('api_Operations') }}</h2>
+        
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="single-tab" data-bs-toggle="tab" data-bs-target="#single" type="button" role="tab" aria-controls="single" aria-selected="true">
+                    <i class="bi bi-play-circle"></i> {{ _('single_request') }}
+                </button>
+            </li>            
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="batch-tab" data-bs-toggle="tab" data-bs-target="#batch" type="button" role="tab" aria-controls="batch" aria-selected="false">
+                    <i class="bi bi-collection-play"></i> {{ _('batch_processing') }}
+                </button>
+            </li>
+            <!-- 添加公司管理标签页 -->
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="company-tab" data-bs-toggle="tab" data-bs-target="#company" type="button" role="tab" aria-controls="company" aria-selected="false">
+                    <i class="bi bi-building"></i> {{ _('quadcell_company_manager') }}
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+            <!-- 单条请求标签页 -->
+            <div class="tab-pane fade show active" id="single" role="tabpanel" aria-labelledby="single-tab">
+                <div class="alert alert-info">
+                    <h5>{{ _('single_title') }}</h5>
+                    <p>{{ _('quadcell_single_description') }}</p>
+                    <p></strong> {{ _('quadcell_single_note') }}</p>
+                </div>
+                
+                <form id="singleForm">
+                    <!-- 在單條請求表單的發送按鈕前添加調試開關 -->
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="debugToggle" name="debug">
+                            <label class="form-check-label" for="debugToggle">
+                                <i class="bi bi-bug"></i> {{ _('debug_mode') }}
+                            </label>
+                            <small class="form-text text-muted d-block">{{ _('debug_mode_description') }}</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="endpoint" class="form-label">{{ _('api_endpoint') }}</label>
+                        <select class="form-select" id="endpoint" name="endpoint" required>
+                            <option value="">{{ _('select_endpoint') }}</option>
+                            {% for endpoint in endpoints %}
+                            <option value="{{ endpoint }}">{{ endpoint }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div id="endpointInfo" class="endpoint-info" style="display: none;">
+                        <h6>{{ _('enpoint_info') }}</h6>
+                        <p id="endpointDescription"></p>
+                    </div>
+
+                    <!-- 公司选择下拉框 -->
+                    <div class="mb-3 fixed-param">
+                        <label for="companyName" class="form-label">{{ _('select_company') }}</label>
+                        <select class="form-select" id="companyName" name="companyName">
+                            <option value="">{{ _('please_select') }}</option>
+                            {% for company in companies %}
+                            <option value="{{ company.companyName }}" data-authkey="{{ company.authKey }}">{{ company.companyName }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">{{ _('quadcell_company_select') }}</div>
+                    </div>
+                    
+                    <!-- 固定的authKey参数 -->
+                    <div class="param-row mb-3 fixed-param">
+                        <label for="param_authKey" class="form-label">{{ _('auth_key') }}</label>
+                        <small class="form-text text-muted d-block">{{ _('auth_key') }}</small>
+                        <input type="text" 
+                            class="form-control" 
+                            id="param_authKey" 
+                            name="authKey" 
+                            value="{{ quadcell_auth_key }}"
+                            placeholder="{{ _('enter_parameter_value') }} authKey">
+                    </div>
+
+                    <div id="paramsContainer">
+                        <!-- 其他参数将在这里动态生成 -->
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary d-block mt-3">
+                        <i class="bi bi-send"></i> {{ _('send_request') }}
+                    </button>
+                </form>
+
+                    <!-- 在響應結果下方添加調試資訊區域 -->
+                    <div id="debugInfo" class="mt-3" style="display: none;">
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white">
+                                <i class="bi bi-bug"></i> {{ _('debug_information') }}
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <h6>{{ _('api_url') }}</h6>
+                                    <pre class="debug-pre" id="debugApiUrl"></pre>
+                                </div>
+                                <div class="mb-3">
+                                    <h6>{{ _('request_json') }}</h6>
+                                    <pre class="debug-pre" id="debugRequestJson"></pre>
+                                </div>
+                                <div class="mb-3">
+                                    <h6>{{ _('encrypted_request') }}</h6>
+                                    <pre class="debug-pre" id="debugEncryptedRequest"></pre>
+                                </div>
+                                <div class="mb-3">
+                                    <h6>{{ _('response_raw') }}</h6>
+                                    <pre class="debug-pre" id="debugResponseRaw"></pre>
+                                </div>
+                                <div class="mb-3">
+                                    <h6>{{ _('timestamp') }}</h6>
+                                    <pre class="debug-pre" id="debugTimestamp"></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>                
+                
+                <div id="singleResult" class="mt-3" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">{{ _('response_result') }}</div>
+                        <div class="card-body">
+                            <pre id="responseContent" class="response-pre"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 批量处理标签页 -->
+            <div class="tab-pane fade" id="batch" role="tabpanel" aria-labelledby="batch-tab">
+                <div class="alert alert-info">
+                    <h5>{{ _('batch_title') }}</h5>
+                    <p>{{ _('quadcell_batch_description') }}</p>
+                    <ul>
+                        <li><strong>endpoint</strong>: {{ _('api_endpoint') }}</li>
+                        <li><strong>imsi</strong>: {{ _('imsi_number_or_range') }}</li>
+                        <li>{{ _('other_required_parameters') }}</li>
+                    </ul>
+                    <p>{{ _('quadcell_batch_note') }}</p>
+                    <!-- 添加模板下载按钮 -->
+                    <div class="mt-3">
+                        <a href="/api/template/quadcell" class="btn btn-success">
+                            <i class="bi bi-download"></i> {{ _('download_template') }}
+                        </a>
+                        <small class="text-muted ms-2">{{ _('template_note') }}</small>
+                    </div>      
+                </div>
+                
+                <form id="batchForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="batchFile" class="form-label">{{ _('select_Excel_File') }}</label>
+                        <input class="form-control" type="file" id="batchFile" name="file" accept=".xlsx,.xls">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="batchCompanyName" class="form-label">{{ _('select_company') }}</label>
+                        <select class="form-select" id="batchCompanyName" name="companyName">
+                            <option value="">{{ _('please_select') }}</option>
+                            {% for company in companies %}
+                            <option value="{{ company.companyName }}">{{ company.companyName }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">{{ _('quadcell_company_authkey_priority') }}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="delay" class="form-label">{{ _('request_interval') }}</label>
+                        <input type="number" class="form-control" id="delay" name="delay" value="0.5" step="0.1" min="0">
+                        <div class="form-text">{{ _('request_interval_note') }}</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-play-fill"></i> {{ _('start_processing') }}
+                    </button>
+                </form>
+                
+                <div id="batchLoading" class="mt-3" style="display: none;">
+                    <div class="alert alert-info">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">{{ _('loading') }}</span>
+                        </div>
+                        {{ _('processing_please_wait') }}
+                    </div>
+                </div>
+                
+                <div id="batchResult" class="mt-3" style="display: none;">
+                    <div class="alert alert-success">
+                        <h5>{{ _('process_completed') }}</h5>
+                        <p id="batchResultMessage"></p>
+                        <p>{{ _('result_file_generated') }}<a id="downloadLink" href="#" class="btn btn-success btn-sm">{{ _('click_to_download') }}</a></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 公司管理标签页 -->
+            <div class="tab-pane fade" id="company" role="tabpanel" aria-labelledby="company-tab">
+                <div class="alert alert-info">
+                    <h5>{{ _('quadcell_company_mapping') }}</h5>
+                    <p>{{ _('quadcell_company_description') }}</p>
+                    <p>{{ _('quadcell_company_usage') }}</p>
+                </div>
+                
+                <!-- 添加新公司的表单 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>{{ _('add_new_company') }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="addCompanyForm">
+                            <div class="row">
+                                <div class="col-md-5">
+                                    <div class="mb-3">
+                                        <label for="newCompanyName" class="form-label">{{ _('company_name') }}</label>
+                                        <input type="text" class="form-control" id="newCompanyName" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-5">
+                                    <div class="mb-3">
+                                        <label for="newAuthKey" class="form-label">{{ _('auth_key') }}</label>
+                                        <input type="text" class="form-control" id="newAuthKey" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-2">
+                                    <div class="mb-3">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="submit" class="btn btn-primary w-100">{{ _('add') }}</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- 公司列表 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5>{{ _('Company list') }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>{{ _('company_name') }}</th>
+                                        <th>{{ _('auth_key') }}</th>
+                                        <th>{{ _('actions') }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="companiesTable">
+                                    <!-- 公司数据将通过JavaScript动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>    
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Quadcell端點信息映射
+var quadcellEndpointInfo = {
+    "qrysub": "{{ _('quadcell_endpoint_qrysub') }}",
+    "qryusage": "{{ _('quadcell_endpoint_qryusage') }}",
+    "qrypacklist": "{{ _('quadcell_endpoint_qrypacklist') }}",
+    "qrypackquota": "{{ _('quadcell_endpoint_qrypackquota') }}",
+    "qryquota": "{{ _('quadcell_endpoint_qryquota') }}",
+    "addsub": "{{ _('quadcell_endpoint_addsub') }}",
+    "delsub": "{{ _('quadcell_endpoint_delsub') }}",
+    "suspend": "{{ _('quadcell_endpoint_suspend') }}",
+    "recover": "{{ _('quadcell_endpoint_recover') }}",
+    "extend": "{{ _('quadcell_endpoint_extend') }}",
+    "v2/addpack": "{{ _('quadcell_endpoint_addpack') }}",
+    "delpack": "{{ _('quadcell_endpoint_delpack') }}",
+    "rechargepackquota": "{{ _('quadcell_endpoint_rechargepackquota') }}",
+    "resetquota": "{{ _('quadcell_endpoint_resetquota') }}",
+    "clearquota": "{{ _('quadcell_endpoint_clearquota') }}",
+    "rechargequota": "{{ _('quadcell_endpoint_rechargequota') }}",
+    "addFupCode": "{{ _('quadcell_endpoint_addFupCode') }}",
+    "delFupCode": "{{ _('quadcell_endpoint_delFupCode') }}",
+    "cancelLoc": "{{ _('quadcell_endpoint_cancelLoc') }}",
+    "submitsms": "{{ _('quadcell_endpoint_submitsms') }}",
+    "qrystatus": "{{ _('quadcell_endpoint_qrystatus') }}",
+    "esim/order": "{{ _('quadcell_endpoint_esim_order') }}",
+    "esim/qryaccount": "{{ _('quadcell_endpoint_esim_qryaccount') }}",
+    "qryorderhistory": "{{ _('quadcell_endpoint_qryorderhistory') }}"
+};
+
+// 重置調試資訊的函數
+function resetDebugInfo() {
+    $('#debugInfo').hide();
+    $('#debugApiUrl').text('');
+    $('#debugRequestJson').text('');
+    $('#debugEncryptedRequest').text('');
+    $('#debugResponseRaw').text('');
+    $('#debugTimestamp').text('');
+    
+    // 移除可能存在的額外調試區域
+    $('.formatted-response-section').remove();
+}
+
+// 按字母順序將選項插入到下拉框的輔助函數
+function insertOptionAlphabetically(selectElement, optionValue, optionText, dataAttributes = {}) {
+    var options = selectElement.find('option');
+    var newOption = $('<option>', {
+        value: optionValue,
+        text: optionText
+    });
+    
+    // 添加數據屬性
+    for (var key in dataAttributes) {
+        if (dataAttributes.hasOwnProperty(key)) {
+            newOption.data(key, dataAttributes[key]);
+        }
+    }
+    
+    // 跳過第一個「請選擇」選項
+    var inserted = false;
+    for (var i = 1; i < options.length; i++) {
+        var currentOption = $(options[i]);
+        var currentText = currentOption.text();
+        
+        // 比較字母順序（不區分大小寫）
+        if (optionText.toLowerCase().localeCompare(currentText.toLowerCase()) < 0) {
+            currentOption.before(newOption);
+            inserted = true;
+            break;
+        }
+    }
+    
+    // 如果沒有找到合適的位置，則添加到末尾
+    if (!inserted) {
+        selectElement.append(newOption);
+    }
+}
+
+$(document).ready(function() {
+    // 端點選擇變化事件
+    $('#endpoint').change(function() {
+        var endpoint = $(this).val();
+        
+        // 清除之前的響應結果
+        $('#singleResult').hide();
+        $('#responseContent').text('');
+        
+        // 重置調試資訊（只清除顯示，不重置開關）
+        resetDebugInfo();
+        
+        if (endpoint) {
+            $('#endpointInfo').show();
+            $('#endpointDescription').text(quadcellEndpointInfo[endpoint] || '無描述信息');
+            
+            // 清空參數容器（保留authKey參數和公司選擇下拉框）
+            $('#paramsContainer').children().not('.fixed-param').remove();
+            
+            // 通過AJAX獲取端點參數
+            $.ajax({
+                url: '/api/quadcell/endpoint/' + encodeURIComponent(endpoint) + '/params',
+                type: 'GET',
+                success: function(params) {
+                    if (params.length === 0) {
+                        $('#paramsContainer').append('<div class="alert alert-info">此端點無需額外參數。</div>');
+                    } else {
+                        // 為每個參數創建輸入框
+                        params.forEach(function(param) {
+                            var paramRow = `
+                            <div class="param-row mb-3">
+                                <label for="param_${param.name}" class="form-label">${param.name} ${param.required ? '<span class="text-danger">*</span>' : ''}</label>
+                                <small class="form-text text-muted d-block">${param.description}</small>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="param_${param.name}" 
+                                       name="${param.name}" 
+                                       ${param.required ? 'required' : ''}
+                                       placeholder="{{ _('enter_parameter_value') }} ${param.name}">
+                            </div>`;
+                            $('#paramsContainer').append(paramRow);
+                        });
+                    }
+                },
+                error: function(xhr) {
+                    $('#paramsContainer').append('<div class="alert alert-danger">獲取端點參數失敗: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知錯誤') + '</div>');
+                }
+            });
+        } else {
+            $('#endpointInfo').hide();
+            // 清空動態參數，但保留固定參數（authKey和公司選擇）
+            $('#paramsContainer').children().not('.fixed-param').remove();
+        }
+    });
+    
+    // 當切換到其他標籤頁時也清除調試資訊
+    $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
+        // 如果從單條請求標籤頁切換出去，清除調試資訊
+        if (e.target.id !== 'single-tab') {
+            resetDebugInfo();
+            // 注意：不重置調試開關狀態
+        }
+    });
+    
+    // 單條請求表單提交
+    $('#singleForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        // 清除之前的響應結果和調試資訊
+        $('#singleResult').hide();
+        resetDebugInfo();  // 清除之前的調試顯示
+        $('#responseContent').text('');
+        
+        // 獲取調試模式狀態
+        var debugMode = $('#debugToggle').is(':checked');
+        
+        // 顯示加載狀態
+        $('#singleResult').html(`
+            <div class="card">
+                <div class="card-header">{{ _('response_result') }}</div>
+                <div class="card-body">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">{{ _('loading') }}</span>
+                        </div>
+                        <p class="mt-2">{{ _('request_processing') }}</p>
+                    </div>
+                </div>
+            </div>
+        `).show();
+        
+        // 構建參數對象，包含調試模式
+        var params = {
+            endpoint: $('#endpoint').val(),
+            debug: debugMode
+        };
+        
+        // 獲取所有參數（包括固定的authKey和動態生成的參數）
+        $('#singleForm input, #singleForm select').each(function() {
+            var name = $(this).attr('name');
+            var value = $(this).val();
+            
+            if (name && name !== 'debug' && value) {
+                params[name] = value;
+            }
+        });
+        
+        // 發送請求
+        $.ajax({
+            url: '/api/quadcell/single',
+            type: 'POST',
+            data: params,
+            success: function(response) {
+                try {
+                    if (debugMode && response.debug_mode) {
+                        // 調試模式：顯示詳細資訊
+                        // 先隱藏普通響應區域
+                        $('#singleResult').hide();
+                        
+                        // 填充調試資訊
+                        $('#debugApiUrl').text(response.api_url || 'N/A');
+                        $('#debugRequestJson').text(JSON.stringify(response.request_json, null, 2) || 'N/A');
+                        $('#debugEncryptedRequest').text(response.encrypted_request || 'N/A');
+                        
+                        // 處理響應原始數據 - 確保美觀顯示
+                        var responseRaw = response.response_raw;
+                        var formattedResponse = '';
+                        
+                        if (typeof responseRaw === 'object') {
+                            formattedResponse = JSON.stringify(responseRaw, null, 2);
+                        } else if (typeof responseRaw === 'string') {
+                            // 嘗試解析字符串響應
+                            try {
+                                var parsedResponse = JSON.parse(responseRaw);
+                                formattedResponse = JSON.stringify(parsedResponse, null, 2);
+                            } catch (e) {
+                                // 如果不是JSON，保持原樣
+                                formattedResponse = responseRaw;
+                            }
+                        } else {
+                            formattedResponse = String(responseRaw);
+                        }
+                        
+                        $('#debugResponseRaw').text(formattedResponse);
+                        $('#debugTimestamp').text(response.timestamp || 'N/A');
+                        
+                        // 顯示調試資訊區域
+                        $('#debugInfo').show();
+                        
+                    } else {
+                        // 正常模式：顯示響應結果
+                        var responseText = '';
+                        
+                        // 判斷響應類型並正確格式化
+                        if (typeof response === 'string') {
+                            // 嘗試解析JSON字符串
+                            try {
+                                var parsedResponse = JSON.parse(response);
+                                responseText = JSON.stringify(parsedResponse, null, 2);
+                            } catch (e) {
+                                // 如果不是JSON，顯示原始字符串
+                                responseText = response;
+                            }
+                        } else if (typeof response === 'object') {
+                            // 如果是對象，直接格式化
+                            responseText = JSON.stringify(response, null, 2);
+                        } else {
+                            // 其他類型轉為字符串
+                            responseText = String(response);
+                        }
+                        
+                        // 更新響應內容
+                        $('#singleResult').html(`
+                            <div class="card">
+                                <div class="card-header">{{ _('response_result') }}</div>
+                                <div class="card-body">
+                                    <pre id="responseContent" class="response-pre">${responseText}</pre>
+                                </div>
+                            </div>
+                        `).show();
+                        
+                        // 確保調試資訊區域隱藏
+                        $('#debugInfo').hide();
+                    }
+                } catch (e) {
+                    console.error('顯示響應時出錯:', e);
+                    // 如果出現錯誤，顯示原始響應
+                    var fallbackText = '';
+                    if (typeof response === 'object') {
+                        fallbackText = JSON.stringify(response, null, 2);
+                    } else if (typeof response === 'string') {
+                        // 嘗試格式化字符串響應
+                        try {
+                            var parsed = JSON.parse(response);
+                            fallbackText = JSON.stringify(parsed, null, 2);
+                        } catch (parseError) {
+                            fallbackText = response;
+                        }
+                    } else {
+                        fallbackText = String(response);
+                    }
+                    
+                    $('#singleResult').html(`
+                        <div class="card">
+                            <div class="card-header">{{ _('response_result') }}</div>
+                            <div class="card-body">
+                                <pre id="responseContent" class="response-pre">${fallbackText}</pre>
+                            </div>
+                        </div>
+                    `).show();
+                    
+                    // 確保調試資訊區域隱藏
+                    $('#debugInfo').hide();
+                }
+            },
+            error: function(xhr) {
+                var errorMsg = '{{ _('error') }}: ' + (xhr.responseJSON ? xhr.responseJSON.error : '{{ _('unknown_error') }}');
+                $('#singleResult').html(`
+                    <div class="card">
+                        <div class="card-header">{{ _('response_result') }}</div>
+                        <div class="card-body">
+                            <pre id="responseContent" class="response-pre">${errorMsg}</pre>
+                        </div>
+                    </div>
+                `).show();
+            }
+        });
+    });
+    // 批量處理表單提交
+    $('#batchForm').on('submit', function(e) {
+        e.preventDefault();
+
+        // 獲取並處理delay值
+        var delayValue = $('#delay').val().trim();
+        if (delayValue === '') {
+            $('#delay').val(0);
+        } else if (isNaN(delayValue) || parseFloat(delayValue) < 0) {
+            alert('Cannot < 0');
+            $('#delay').focus();
+            return;
+        }        
+        
+        // 隱藏之前的結果
+        $('#batchResult').hide();
+        $('#batchLoading').show();
+        
+        var formData = new FormData(this);
+        
+        $.ajax({
+            url: '/api/quadcell/batch',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                $('#batchLoading').hide();
+                if (response.success) {
+                    $('#batchResultMessage').text(response.message);
+                    // 設置下載連結
+                    var downloadUrl = '/api/download/quadcell/' + response.filename;
+                    $('#downloadLink').attr('href', downloadUrl);
+                    $('#batchResult').show();
+                } else {
+                    alert('處理失敗: ' + response.error);
+                }
+            },
+            error: function(xhr) {
+                $('#batchLoading').hide();
+                alert('請求失敗: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知錯誤'));
+            }
+        });
+    });
+    
+    // 公司管理功能
+    // 加載公司列表
+    function loadCompanies() {
+        $.ajax({
+            url: '/api/quadcell/companies',
+            type: 'GET',
+            success: function(companies) {
+                // 在前端也按字母順序排序，確保一致性
+                companies.sort(function(a, b) {
+                    return a.companyName.toLowerCase().localeCompare(b.companyName.toLowerCase());
+                });
+                
+                var tableHtml = '';
+                if (companies.length === 0) {
+                    tableHtml = '<tr><td colspan="3" class="text-center">暫無公司數據</td></tr>';
+                } else {
+                    companies.forEach(function(company) {
+                        tableHtml += `
+                        <tr id="company-${company.companyName}">
+                            <td>${company.companyName}</td>
+                            <td>${company.authKey}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary edit-company" 
+                                        data-company="${company.companyName}" 
+                                        data-authkey="${company.authKey}">
+                                    {{ _('edit') }}
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger delete-company" 
+                                        data-company="${company.companyName}">
+                                    {{ _('delete') }}
+                                </button>
+                            </td>
+                        </tr>`;
+                    });
+                }
+                $('#companiesTable').html(tableHtml);
+            },
+            error: function(xhr) {
+                alert('加載公司列表失敗: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知錯誤'));
+            }
+        });
+    }
+    
+    // 初始加載公司列表
+    loadCompanies();
+    
+    // 添加公司表單提交
+    $('#addCompanyForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        var companyName = $('#newCompanyName').val();
+        var authKey = $('#newAuthKey').val();
+        
+        if (!companyName || !authKey) {
+            alert('請填寫公司名稱和AuthKey');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/quadcell/companies',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                companyName: companyName,
+                authKey: authKey
+            }),
+            success: function() {
+                alert('添加成功');
+                $('#newCompanyName').val('');
+                $('#newAuthKey').val('');
+                loadCompanies();
+                
+                // 按字母順序插入到單條請求頁面的公司下拉框
+                insertOptionAlphabetically($('#companyName'), companyName, companyName, { authkey: authKey });
+                
+                // 按字母順序插入到批量處理的公司下拉框
+                insertOptionAlphabetically($('#batchCompanyName'), companyName, companyName);
+            },
+            error: function(xhr) {
+                alert('添加失敗: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知錯誤'));
+            }
+        });
+    });
+    
+    // 編輯公司（使用事件委託，因為按鈕是動態生成的）
+    $(document).on('click', '.edit-company', function() {
+        var companyName = $(this).data('company');
+        var authKey = $(this).data('authkey');
+        
+        var newAuthKey = prompt(`請輸入 ${companyName} 的新AuthKey:`, authKey);
+        if (newAuthKey === null) return; // 用戶取消了
+        
+        if (!newAuthKey) {
+            alert('AuthKey不能為空');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/quadcell/companies/' + encodeURIComponent(companyName),
+            type: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                authKey: newAuthKey
+            }),
+            success: function() {
+                alert('更新成功');
+                loadCompanies();
+                
+                // 更新單條請求頁面的authKey顯示
+                var companyOption = $('#companyName option[value="' + companyName + '"]');
+                if (companyOption.length) {
+                    companyOption.data('authkey', newAuthKey);
+                }
+            },
+            error: function(xhr) {
+                alert('更新失敗: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知錯誤'));
+            }
+        });
+    });
+    
+    // 刪除公司（使用事件委託）
+    $(document).on('click', '.delete-company', function() {
+        var companyName = $(this).data('company');
+        
+        if (!confirm(`確定要刪除 ${companyName} 嗎？`)) return;
+        
+        $.ajax({
+            url: '/api/quadcell/companies/' + encodeURIComponent(companyName),
+            type: 'DELETE',
+            success: function() {
+                alert('刪除成功');
+                loadCompanies();
+                
+                // 從單條請求頁面的下拉框中移除
+                $('#companyName option[value="' + companyName + '"]').remove();
+                $('#batchCompanyName option[value="' + companyName + '"]').remove();
+            },
+            error: function(xhr) {
+                alert('刪除失敗: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知錯誤'));
+            }
+        });
+    });
+    
+    // 當選擇公司時，自動填充對應的authKey（僅在單條請求頁面）
+    $('#companyName').change(function() {
+        var selectedCompany = $(this).val();
+        var selectedOption = $(this).find('option:selected');
+        var authKey = selectedOption.data('authkey');
+        
+        if (authKey) {
+            $('#param_authKey').val(authKey);
+        } else if (!selectedCompany) {
+            // 如果沒有選擇公司，使用默認authKey
+            $('#param_authKey').val('{{ quadcell_auth_key }}');
+        }
+    });
+});
+</script>
+{% endblock %}

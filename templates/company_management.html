@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}公司映射管理{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>公司映射管理</h2>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>添加新公司</h5>
+            </div>
+            <div class="card-body">
+                <form id="addCompanyForm">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <div class="mb-3">
+                                <label for="newCompanyName" class="form-label">公司名称</label>
+                                <input type="text" class="form-control" id="newCompanyName" required>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="mb-3">
+                                <label for="newAuthKey" class="form-label">AuthKey</label>
+                                <input type="text" class="form-control" id="newAuthKey" required>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="mb-3">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary w-100">添加</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>公司列表</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>公司名称</th>
+                                <th>AuthKey</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="companiesTable">
+                            <!-- 公司数据将通过JavaScript动态加载 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 加载公司列表
+    function loadCompanies() {
+        $.ajax({
+            url: '/api/quadcell/companies',
+            type: 'GET',
+            success: function(companies) {
+                var tableHtml = '';
+                if (companies.length === 0) {
+                    tableHtml = '<tr><td colspan="3" class="text-center">暂无公司数据</td></tr>';
+                } else {
+                    companies.forEach(function(company) {
+                        tableHtml += `
+                        <tr id="company-${company.companyName}">
+                            <td>${company.companyName}</td>
+                            <td>${company.authKey}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary edit-company" data-company="${company.companyName}" data-authkey="${company.authKey}">编辑</button>
+                                <button class="btn btn-sm btn-outline-danger delete-company" data-company="${company.companyName}">删除</button>
+                            </td>
+                        </tr>`;
+                    });
+                }
+                $('#companiesTable').html(tableHtml);
+            },
+            error: function(xhr) {
+                alert('加载公司列表失败: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知错误'));
+            }
+        });
+    }
+    
+    // 初始加载公司列表
+    loadCompanies();
+    
+    // 添加公司表单提交
+    $('#addCompanyForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        var companyName = $('#newCompanyName').val();
+        var authKey = $('#newAuthKey').val();
+        
+        if (!companyName || !authKey) {
+            alert('请填写公司名称和AuthKey');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/quadcell/companies',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                companyName: companyName,
+                authKey: authKey
+            }),
+            success: function() {
+                alert('添加成功');
+                $('#newCompanyName').val('');
+                $('#newAuthKey').val('');
+                loadCompanies();
+            },
+            error: function(xhr) {
+                alert('添加失败: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知错误'));
+            }
+        });
+    });
+    
+    // 编辑公司
+    $(document).on('click', '.edit-company', function() {
+        var companyName = $(this).data('company');
+        var authKey = $(this).data('authkey');
+        
+        var newAuthKey = prompt(`请输入 ${companyName} 的新AuthKey:`, authKey);
+        if (newAuthKey === null) return; // 用户取消了
+        
+        if (!newAuthKey) {
+            alert('AuthKey不能为空');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/quadcell/companies/' + encodeURIComponent(companyName),
+            type: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                authKey: newAuthKey
+            }),
+            success: function() {
+                alert('更新成功');
+                loadCompanies();
+            },
+            error: function(xhr) {
+                alert('更新失败: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知错误'));
+            }
+        });
+    });
+    
+    // 删除公司
+    $(document).on('click', '.delete-company', function() {
+        var companyName = $(this).data('company');
+        
+        if (!confirm(`确定要删除 ${companyName} 吗？`)) return;
+        
+        $.ajax({
+            url: '/api/quadcell/companies/' + encodeURIComponent(companyName),
+            type: 'DELETE',
+            success: function() {
+                alert('删除成功');
+                loadCompanies();
+            },
+            error: function(xhr) {
+                alert('删除失败: ' + (xhr.responseJSON ? xhr.responseJSON.error : '未知错误'));
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
