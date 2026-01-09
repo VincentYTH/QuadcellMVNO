@@ -291,3 +291,42 @@ def import_resources():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': f'匯入失敗: {str(e)}'}), 500
+
+@sim_resources_bp.route('/api/assign/calculate', methods=['POST'])
+def calculate_assignment():
+    """計算分配選項"""
+    data = request.json
+    result = SimResourceManager.calculate_assignment_options(
+        provider=data.get('provider'),
+        card_type=data.get('card_type'),
+        resources_type=data.get('resources_type'),
+        quantity=int(data.get('quantity', 0))
+    )
+    return jsonify(result)
+
+@sim_resources_bp.route('/api/assign/confirm', methods=['POST'])
+def confirm_assignment():
+    """確認並執行自動分配"""
+    data = request.json
+    result = SimResourceManager.confirm_assignment(
+        plan=data.get('batches'),
+        customer=data.get('customer'),
+        assigned_date=data.get('assigned_date'),
+        provider=data.get('provider'),
+        card_type=data.get('card_type'),
+        resources_type=data.get('resources_type')
+    )
+    return jsonify(result)
+
+@sim_resources_bp.route('/api/assign/manual', methods=['POST'])
+def manual_assignment():
+    """執行手動分配"""
+    data = request.json
+    result = SimResourceManager.manual_assignment(
+        start_imsi=data.get('start_imsi'),
+        end_imsi=data.get('end_imsi'),
+        customer=data.get('customer'),
+        assigned_date=data.get('assigned_date')
+    )
+    return jsonify(result)    
+    

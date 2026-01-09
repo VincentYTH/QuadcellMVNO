@@ -4,6 +4,7 @@
 
 {% block extra_css %}
 <style>
+    /* 搜索區塊樣式 */
     .search-filter-group {
         background-color: #f8f9fa;
         padding: 15px;
@@ -17,6 +18,7 @@
         border-left: 0;
     }
     
+    /* 表格標題排序樣式 */
     .sortable-header {
         cursor: pointer;
         user-select: none;
@@ -49,6 +51,25 @@
         padding: 0.25rem 0.5rem;
         font-size: 0.875rem;
     }
+
+    /* 資源分配選項卡片樣式 */
+    .option-card {
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .option-card:hover {
+        background-color: #f8f9fa;
+        border-color: #0d6efd;
+    }
+    .option-card.selected {
+        background-color: #e7f1ff;
+        border-color: #0d6efd;
+        border-width: 2px;
+    }
 </style>
 {% endblock %}
 
@@ -57,6 +78,10 @@
 
 <div class="d-flex justify-content-end mb-3">
     <div class="btn-group">
+        <button type="button" class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#assignModal">
+            <i class="bi bi-box-seam"></i> Resource Assignment
+        </button>
+        
         <a href="/api/template/sim_resources" class="btn btn-info me-2">
             <i class="bi bi-download"></i> {{ _('download_template') }}
         </a>
@@ -203,6 +228,12 @@
     <table class="table table-striped table-hover align-middle">
         <thead>
             <tr>
+                <th class="sortable-header" onclick="sortTable('status')">
+                    Status
+                    {% if search_params.sort == 'status' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
                 <th class="sortable-header" onclick="sortTable('supplier')">
                     Provider
                     {% if search_params.sort == 'supplier' %}
@@ -227,12 +258,6 @@
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
-                <th class="sortable-header" onclick="sortTable('received_date')">
-                    ReceivedDate
-                    {% if search_params.sort == 'received_date' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
                 <th class="sortable-header" onclick="sortTable('imsi')">
                     IMSI
                     {% if search_params.sort == 'imsi' %}
@@ -251,34 +276,62 @@
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
+                
+                <th class="sortable-header" onclick="sortTable('customer')">
+                    Customer
+                    {% if search_params.sort == 'customer' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                
+                <th class="sortable-header" onclick="sortTable('assigned_date')">
+                    Assigned Date
+                    {% if search_params.sort == 'assigned_date' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                
                 <th class="sortable-header" onclick="sortTable('created_at')">
                     Create Time
                     {% if search_params.sort == 'created_at' %}
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
+                
                 <th class="sortable-header" onclick="sortTable('updated_at')">
                     Updated Time
                     {% if search_params.sort == 'updated_at' %}
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
+                
                 <th>{{ _('actions') }}</th>
             </tr>
         </thead>
         <tbody>
             {% for res in resources %}
             <tr>
+                <td>
+                    {% if res.status == 'Available' %}
+                        <span class="badge bg-success">Available</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Assigned</span>
+                    {% endif %}
+                </td>
                 <td>{{ res.supplier }}</td>
                 <td><span class="badge bg-{% if res.type == 'Physical SIM' %}primary{% elif res.type == 'eSIM' %}success{% else %}warning{% endif %}">{{ res.type }}</span></td>
                 <td>{{ res.resources_type or '' }}</td>
                 <td>{{ res.batch or '' }}</td>
-                <td>{{ res.received_date or '' }}</td>
                 <td>{{ res.imsi or '' }}</td>
                 <td>{{ res.iccid or '' }}</td>
                 <td>{{ res.msisdn or '' }}</td>
-                <td>{{ res.created_at | hk_time }}</td>
-                <td>{{ res.updated_at | hk_time }}</td>
+                
+                <td>{{ res.customer or '-' }}</td>
+                <td>{{ res.assigned_date or '-' }}</td>
+                
+                <td class="time-cell">{{ res.created_at | hk_time }}</td>
+                <td class="time-cell">{{ res.updated_at | hk_time }}</td>
+                
                 <td>
                     <div class="btn-group btn-group-sm">
                         <button class="btn btn-warning edit-btn"
@@ -502,6 +555,124 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="assignModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Resource Assignment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" id="assignTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="auto-tab" data-bs-toggle="tab" data-bs-target="#auto-assign" type="button">Auto Assignment</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual-assign" type="button">Manual Assignment</button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="auto-assign">
+                        <form id="autoAssignForm">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Provider</label>
+                                    <select class="form-select" id="assignProvider" required>
+                                        <option value="">Select...</option>
+                                        {% for provider in options.providers %}
+                                            <option value="{{ provider }}">{{ provider }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">CardType</label>
+                                    <select class="form-select" id="assignCardType" required>
+                                        <option value="">Select...</option>
+                                        {% for card_type in options.card_types %}
+                                            <option value="{{ card_type }}">{{ card_type }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">ResourcesType</label>
+                                    <select class="form-select" id="assignResourcesType" required>
+                                        <option value="">Select...</option>
+                                        {% for rt in options.resources_types %}
+                                            <option value="{{ rt }}">{{ rt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Quantity</label>
+                                    <input type="number" class="form-control" id="assignQty" min="1" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">&nbsp;</label>
+                                    <button type="button" class="btn btn-primary w-100" id="btnCalculate">Check & Calculate</button>
+                                </div>
+                            </div>
+                            
+                            <div id="assignOptionsArea" style="display:none;" class="border-top pt-3 mt-3">
+                                <h6>Available Options:</h6>
+                                <div id="optionsContainer"></div>
+                                
+                                <div class="row g-3 mt-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Customer Name</label>
+                                        <input type="text" class="form-control" id="assignCustomer" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Assign Date</label>
+                                        <input type="date" class="form-control" id="assignDate" required>
+                                    </div>
+                                </div>
+                                <div class="mt-3 text-end">
+                                    <button type="submit" class="btn btn-success" id="btnConfirmAssign" disabled>Confirm Assignment</button>
+                                </div>
+                            </div>
+                            
+                            <div id="autoAssignError" class="alert alert-danger mt-3" style="display:none;"></div>
+                        </form>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="manual-assign">
+                        <div class="alert alert-warning">
+                            <small><i class="bi bi-exclamation-triangle"></i> Use this only when auto-assignment cannot meet specific range requirements.</small>
+                        </div>
+                        <form id="manualAssignForm">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Start IMSI</label>
+                                    <input type="text" class="form-control" id="manualStartImsi" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">End IMSI</label>
+                                    <input type="text" class="form-control" id="manualEndImsi" required>
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Customer Name</label>
+                                    <input type="text" class="form-control" id="manualCustomer" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Assign Date</label>
+                                    <input type="date" class="form-control" id="manualDate" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-danger w-100">Execute Manual Assignment</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -552,7 +723,7 @@ function goToPage(page) {
     window.location.href = `?${params.toString()}`;
 }
 
-// 4) 新增：修改每頁顯示數量
+// 修改每頁顯示數量
 function changePerPage(val) {
     const params = new URLSearchParams(window.location.search);
     params.set('per_page', val);
@@ -586,6 +757,183 @@ function updateResourceTypes(provider, selectedValue) {
 }
 
 $(document).ready(function() {
+    // 設置資源分配日期默認值為今天
+    const today = new Date().toISOString().split('T')[0];
+    $('#assignDate').val(today);
+    $('#manualDate').val(today);
+    
+    let currentOptions = [];
+    let selectedOptionIndex = -1;
+
+    // --- 自動分配邏輯 ---
+
+    // 1. 計算選項
+    $('#btnCalculate').click(function() {
+        const provider = $('#assignProvider').val();
+        const cardType = $('#assignCardType').val();
+        const resType = $('#assignResourcesType').val();
+        const qty = $('#assignQty').val();
+        
+        if (!provider || !cardType || !resType || !qty) {
+            alert('Please fill in all criteria fields.');
+            return;
+        }
+        
+        // 重置 UI
+        $('#assignOptionsArea').hide();
+        $('#autoAssignError').hide();
+        $('#optionsContainer').empty();
+        $('#btnConfirmAssign').prop('disabled', true);
+        $(this).prop('disabled', true).text('Calculating...');
+        
+        $.ajax({
+            url: '/resources/api/assign/calculate',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                provider: provider,
+                card_type: cardType,
+                resources_type: resType,
+                quantity: qty
+            }),
+            success: function(res) {
+                $('#btnCalculate').prop('disabled', false).text('Check & Calculate');
+                
+                if (res.success) {
+                    currentOptions = res.options;
+                    $('#assignOptionsArea').show();
+                    
+                    if (currentOptions.length === 0) {
+                        $('#optionsContainer').html('<div class="alert alert-warning">No options available. Please try Manual Assignment.</div>');
+                    } else {
+                        currentOptions.forEach((opt, index) => {
+                            let batchDetails = opt.batches.map(b => 
+                                `<li>Batch <b>${b.batch}</b> (${b.received_date}): Take <b>${b.take}</b> (Avail: ${b.available})</li>`
+                            ).join('');
+                            
+                            let html = `
+                                <div class="option-card" onclick="selectOption(${index})">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="assignOption" id="opt${index}" value="${index}">
+                                        <label class="form-check-label fw-bold" for="opt${index}">
+                                            ${opt.name}
+                                        </label>
+                                    </div>
+                                    <ul class="small text-muted mt-2 mb-0 ps-4">
+                                        ${batchDetails}
+                                    </ul>
+                                </div>
+                            `;
+                            $('#optionsContainer').append(html);
+                        });
+                        
+                        // 默認選中第一個
+                        selectOption(0);
+                    }
+                } else {
+                    $('#autoAssignError').show().html(`
+                        <strong>庫存不足!</strong> ${res.message}<br>
+                        建議切換到 "Manual Assignment" 手動處理特定號段。
+                    `);
+                }
+            },
+            error: function(err) {
+                $('#btnCalculate').prop('disabled', false).text('Check & Calculate');
+                alert('Error: ' + err.statusText);
+            }
+        });
+    });
+    
+    // 2. 選擇選項
+    window.selectOption = function(index) {
+        selectedOptionIndex = index;
+        $('.option-card').removeClass('selected');
+        $('.option-card').eq(index).addClass('selected');
+        $(`#opt${index}`).prop('checked', true);
+        $('#btnConfirmAssign').prop('disabled', false);
+    };
+    
+    // 3. 確認分配
+    $('#autoAssignForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (selectedOptionIndex < 0) return;
+        
+        const customer = $('#assignCustomer').val();
+        const date = $('#assignDate').val();
+        const plan = currentOptions[selectedOptionIndex].batches;
+        
+        // 獲取當前選中的篩選條件
+        const provider = $('#assignProvider').val();
+        const cardType = $('#assignCardType').val();
+        const resType = $('#assignResourcesType').val();
+        
+        if (!confirm(`Confirm to assign ${$('#assignQty').val()} SIMs to ${customer}?`)) return;
+        
+        $.ajax({
+            url: '/resources/api/assign/confirm',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                batches: plan,
+                customer: customer,
+                assigned_date: date,
+                // 將條件一併傳送給後端進行二次驗證
+                provider: provider,
+                card_type: cardType,
+                resources_type: resType
+            }),
+            success: function(res) {
+                if (res.success) {
+                    alert(res.message + "\n\nDetails:\n" + res.details.join('\n'));
+                    location.reload();
+                } else {
+                    alert('Assignment Failed: ' + res.message);
+                }
+            },
+            error: function(err) {
+                alert('Error: ' + err.responseText);
+            }
+        });
+    });
+    
+    // --- 手動分配邏輯 ---
+    $('#manualAssignForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const start = $('#manualStartImsi').val().trim();
+        const end = $('#manualEndImsi').val().trim();
+        const customer = $('#manualCustomer').val().trim();
+        const date = $('#manualDate').val();
+        
+        if (!confirm(`Warning: You are manually assigning IMSI range ${start} - ${end} to ${customer}. Continue?`)) return;
+        
+        $.ajax({
+            url: '/resources/api/assign/manual',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                start_imsi: start,
+                end_imsi: end,
+                customer: customer,
+                assigned_date: date
+            }),
+            success: function(res) {
+                if (res.success) {
+                    alert(res.message);
+                    location.reload();
+                } else {
+                    alert('Failed: ' + res.message);
+                }
+            },
+            error: function(err) {
+                alert('Error: ' + err.responseText);
+            }
+        });
+    });
+    
+    // --- 原有邏輯 ---
+    
     // Provider 改變時更新資源類型
     $('#provider').change(function() {
         updateResourceTypes($(this).val());

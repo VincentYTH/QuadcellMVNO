@@ -12,6 +12,7 @@ venv/
 uploads/
 CallbackLogs/
 
-# 啓動項目
+# 其他項目
 auto_start_app.vbs - 捷徑.lnk
 service_manager.bat
+update_db.py

@@ -22,6 +22,16 @@ class SimResource(db.Model):
     puk1 = db.Column(db.String(255))
     pin2 = db.Column(db.String(255))
     puk2 = db.Column(db.String(255))
+    
+    # === 新增欄位 ===
+    # 狀態: Available / Assigned，預設 Available
+    status = db.Column(db.String(20), default='Available', index=True)
+    # 客戶名稱
+    customer = db.Column(db.String(100), nullable=True)
+    # 分配日期 (格式 YYYY-MM-DD)
+    assigned_date = db.Column(db.String(20), nullable=True)
+    # ================
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -39,13 +49,9 @@ class SimResource(db.Model):
             'imsi': self.imsi,
             'iccid': self.iccid,
             'msisdn': self.msisdn,
-            'ki': self.ki,
-            'opc': self.opc,
-            'lpa': self.lpa,
-            'pin1': self.pin1,
-            'puk1': self.puk1,
-            'pin2': self.pin2,
-            'puk2': self.puk2,
+            'status': self.status,
+            'customer': self.customer,
+            'assigned_date': self.assigned_date,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
