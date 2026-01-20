@@ -187,6 +187,8 @@ def index():
         SimResource.supplier,
         SimResource.type,
         func.count(SimResource.id)
+    ).filter(
+        SimResource.status == 'Available'  # <--- 只統計可用庫存
     ).group_by(SimResource.supplier, SimResource.type).all()
     
     inventory_data = {}

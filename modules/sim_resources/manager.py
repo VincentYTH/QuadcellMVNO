@@ -34,7 +34,9 @@ class SimResourceManager:
     
     @staticmethod
     def _apply_search_filters(query, params):
-        """应用搜索过滤器"""
+        """應用搜尋過濾器 (增強版)"""
+        
+        # 1. 精確/模糊匹配欄位
         if params.get('provider'):
             query = query.filter(SimResource.supplier.ilike(f'%{params["provider"]}%'))
         if params.get('card_type'):
@@ -45,12 +47,49 @@ class SimResourceManager:
             query = query.filter(SimResource.batch.ilike(f'%{params["batch"]}%'))
         if params.get('received_date'):
             query = query.filter(SimResource.received_date.ilike(f'%{params["received_date"]}%'))
-        if params.get('imsi'):
-            query = query.filter(SimResource.imsi.ilike(f'%{params["imsi"]}%'))
-        if params.get('iccid'):
-            query = query.filter(SimResource.iccid.ilike(f'%{params["iccid"]}%'))
-        if params.get('msisdn'):
-            query = query.filter(SimResource.msisdn.ilike(f'%{params["msisdn"]}%'))
+            
+        # 2. 新增欄位搜尋
+        if params.get('status'):
+            query = query.filter(SimResource.status == params['status'])  # 精確匹配
+            
+        if params.get('customer'):
+            query = query.filter(SimResource.customer.ilike(f'%{params["customer"]}%')) # 模糊匹配
+            
+        # 3. 分配日期範圍搜尋
+        start_date = params.get('assigned_date_start')
+        end_date = params.get('assigned_date_end')
+        if start_date and end_date:
+            # 假設資料庫存的是字串 YYYY-MM-DD，可以直接字串比較
+            query = query.filter(SimResource.assigned_date >= start_date, SimResource.assigned_date <= end_date)
+        elif start_date:
+            query = query.filter(SimResource.assigned_date >= start_date)
+        elif end_date:
+            query = query.filter(SimResource.assigned_date <= end_date)
+
+        # 4. 段落搜尋 (IMSI, ICCID, MSISDN)
+        # 邏輯：如果有 "-" 則視為範圍，否則視為模糊搜尋
+        
+        def apply_range_or_like(q, field, value):
+            if not value:
+                return q
+            
+            value = value.strip()
+            if '-' in value:
+                # 嘗試解析範圍
+                parts = value.split('-')
+                if len(parts) == 2:
+                    start, end = parts[0].strip(), parts[1].strip()
+                    # 確保兩者都是數字 (簡單驗證)
+                    if start.isdigit() and end.isdigit():
+                        return q.filter(field >= start, field <= end)
+            
+            # 默認模糊搜尋
+            return q.filter(field.ilike(f'%{value}%'))
+
+        query = apply_range_or_like(query, SimResource.imsi, params.get('imsi'))
+        query = apply_range_or_like(query, SimResource.iccid, params.get('iccid'))
+        query = apply_range_or_like(query, SimResource.msisdn, params.get('msisdn'))
+            
         return query
     
     @staticmethod
@@ -455,3 +494,19 @@ class SimResourceManager:
         except Exception as e:
             db.session.rollback()
             return {"success": False, "message": f"系統錯誤: {str(e)}"}
+        
+    @staticmethod
+    def unassign_resource(resource_id):
+        """取消分配：將狀態重置為 Available 並清空客戶資訊"""
+        resource = SimResource.query.get_or_404(resource_id)
+        
+        if resource.status == 'Available':
+            return resource # 本來就是 Available，無需操作
+            
+        resource.status = 'Available'
+        resource.customer = None
+        resource.assigned_date = None
+        # resource.order_id = None # 如果有這個欄位也清空
+        
+        db.session.commit()
+        return resource

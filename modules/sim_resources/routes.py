@@ -13,12 +13,10 @@ sim_resources_bp = Blueprint('sim_resources', __name__, url_prefix='/resources')
 # SIM資源管理頁面 - 使用全寬模式
 @sim_resources_bp.route('')
 def resources_page():
-    """SIM資源管理頁面 - 支持多欄位搜索 + 每頁數量控制 + 排序"""
     page = request.args.get('page', 1, type=int)
-    # 獲取每頁顯示數量，默認為 20
     per_page = request.args.get('per_page', 20, type=int)
     
-    # 獲取搜索參數
+    # 獲取搜索參數 (新增了 status, customer, assigned_date_start/end)
     search_params = {
         'provider': request.args.get('provider', '').strip(),
         'card_type': request.args.get('card_type', '').strip(),
@@ -28,18 +26,21 @@ def resources_page():
         'imsi': request.args.get('imsi', '').strip(),
         'iccid': request.args.get('iccid', '').strip(),
         'msisdn': request.args.get('msisdn', '').strip(),
+        
+        # 新增參數
+        'status': request.args.get('status', '').strip(),
+        'customer': request.args.get('customer', '').strip(),
+        'assigned_date_start': request.args.get('assigned_date_start', '').strip(),
+        'assigned_date_end': request.args.get('assigned_date_end', '').strip(),
+        
         'sort': request.args.get('sort', 'updated_at'),
         'order': request.args.get('order', 'desc'),
-        'per_page': per_page  # 將 per_page 加入參數以便回傳給前端
+        'per_page': per_page
     }
     
-    # 獲取資源列表 (傳入 per_page)
     resources = SimResourceManager.get_all_resources(search_params, page, per_page)
-    
-    # 獲取選項數據
     options = SimResourceManager.get_options()
     
-    # 傳遞 full_width=True 表示使用全寬模式
     return render_template('resources.html', 
                           resources=resources.items, 
                           pagination=resources,
@@ -329,4 +330,14 @@ def manual_assignment():
         assigned_date=data.get('assigned_date')
     )
     return jsonify(result)    
+
+# 取消分配 API
+@sim_resources_bp.route('/api/unassign/<int:resource_id>', methods=['POST'])
+def unassign_resource(resource_id):
+    try:
+        SimResourceManager.unassign_resource(resource_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
     
