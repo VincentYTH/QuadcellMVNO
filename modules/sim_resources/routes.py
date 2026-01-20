@@ -16,7 +16,7 @@ def resources_page():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
-    # 獲取搜索參數 (新增了 status, customer, assigned_date_start/end)
+    # 獲取搜索參數
     search_params = {
         'provider': request.args.get('provider', '').strip(),
         'card_type': request.args.get('card_type', '').strip(),
@@ -151,7 +151,7 @@ def export_resources():
 # SIM Resource Import Excel
 @sim_resources_bp.route('/api/import', methods=['POST'])
 def import_resources():
-    """匯入 SIM 資源 Excel，嚴格按照欄位規則 + 條件必填驗證"""
+    """匯入 SIM 資源 Excel"""
     try:
         if 'file' not in request.files:
             return jsonify({'error': '沒有上傳檔案'}), 400
@@ -329,15 +329,14 @@ def manual_assignment():
         customer=data.get('customer'),
         assigned_date=data.get('assigned_date')
     )
-    return jsonify(result)    
+    return jsonify(result)
 
-# 取消分配 API
-@sim_resources_bp.route('/api/unassign/<int:resource_id>', methods=['POST'])
-def unassign_resource(resource_id):
-    try:
-        SimResourceManager.unassign_resource(resource_id)
-        return jsonify({'success': True})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-    
+@sim_resources_bp.route('/api/assign/cancel_range', methods=['POST'])
+def cancel_assignment_range():
+    """執行批量取消分配 (Range)"""
+    data = request.json
+    result = SimResourceManager.cancel_assignment_by_range(
+        start_imsi=data.get('start_imsi'),
+        end_imsi=data.get('end_imsi')
+    )
+    return jsonify(result)

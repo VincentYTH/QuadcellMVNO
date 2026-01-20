@@ -12,12 +12,6 @@
         margin-bottom: 20px;
     }
     
-    .input-group-clear .btn-clear {
-        border-top-left-radius: 0;
-        border-bottom-left-radius: 0;
-        border-left: 0;
-    }
-    
     /* 表格標題排序樣式 */
     .sortable-header {
         cursor: pointer;
@@ -32,13 +26,6 @@
     .sort-icon {
         font-size: 0.8em;
         margin-left: 5px;
-    }
-    
-    /* 時間欄位樣式 */
-    .time-cell {
-        font-size: 0.85rem;
-        color: #666;
-        white-space: nowrap;
     }
     
     /* 表格響應式設計 */
@@ -129,23 +116,22 @@
                 </select>
             </div>
             
-            <div class="col-md-2">
-                <label class="form-label small">Batch</label>
-                <input type="text" name="batch" class="form-control form-control-sm" value="{{ search_params.batch }}">
-            </div>
-
-            <div class="col-md-2">
-                <label class="form-label small">Status</label>
-                <select name="status" class="form-control form-control-sm">
+            <div class="col-md-2"> <label class="form-label small">Batch</label>
+                <select name="batch" class="form-control form-control-sm">
                     <option value="">All</option>
-                    <option value="Available" {% if search_params.status == 'Available' %}selected{% endif %}>Available</option>
-                    <option value="Assigned" {% if search_params.status == 'Assigned' %}selected{% endif %}>Assigned</option>
+                    {% for batch in options.batches %}
+                        <option value="{{ batch }}" {% if search_params.batch == batch %}selected{% endif %}>{{ batch }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
-            <div class="col-md-2">
-                <label class="form-label small">Customer</label>
-                <input type="text" name="customer" class="form-control form-control-sm" value="{{ search_params.customer }}">
+            <div class="col-md-2"> <label class="form-label small">Received Date</label>
+                <select name="received_date" class="form-control form-control-sm">
+                    <option value="">All</option>
+                    {% for r_date in options.received_dates %}
+                        <option value="{{ r_date }}" {% if search_params.received_date == r_date %}selected{% endif %}>{{ r_date }}</option>
+                    {% endfor %}
+                </select>
             </div>
         </div>
         
@@ -170,6 +156,25 @@
         </div>
         
         <div class="row mb-2 g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small">Status</label>
+                <select name="status" class="form-control form-control-sm">
+                    <option value="">All</option>
+                    <option value="Available" {% if search_params.status == 'Available' %}selected{% endif %}>Available</option>
+                    <option value="Assigned" {% if search_params.status == 'Assigned' %}selected{% endif %}>Assigned</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small">Customer</label>
+                <select name="customer" class="form-control form-control-sm">
+                    <option value="">All</option>
+                    {% for cust in options.customers %}
+                        <option value="{{ cust }}" {% if search_params.customer == cust %}selected{% endif %}>{{ cust }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
              <div class="col-md-4">
                 <label class="form-label small">Assigned Date Range</label>
                 <div class="input-group input-group-sm">
@@ -179,13 +184,7 @@
                 </div>
             </div>
             
-            <div class="col-md-2">
-                <label class="form-label small">Received Date</label>
-                <input type="text" name="received_date" class="form-control form-control-sm" 
-                       placeholder="yyyymmdd" value="{{ search_params.received_date }}">
-            </div>
-            
-            <div class="col-md-6 text-end">
+            <div class="col-md-4 text-end">
                 <button type="submit" class="btn btn-primary btn-sm me-2">
                     <i class="bi bi-search"></i> Search
                 </button>
@@ -290,26 +289,18 @@
                 <td><span class="badge bg-{% if res.type == 'Physical SIM' %}primary{% elif res.type == 'eSIM' %}success{% else %}warning{% endif %}">{{ res.type }}</span></td>
                 <td>{{ res.resources_type or '' }}</td>
                 <td>{{ res.batch or '' }}</td>
-                <td><code class="small">{{ res.imsi or '' }}</code></td>
-                <td><code class="small">{{ res.iccid or '' }}</code></td>
+                <td>{{ res.imsi or '' }}</td>
+                <td>{{ res.iccid or '' }}</td>
                 <td>{{ res.msisdn or '' }}</td>
                 
                 <td>{{ res.customer or '-' }}</td>
                 <td>{{ res.assigned_date or '-' }}</td>
                 
-                <td class="time-cell">{{ res.created_at | hk_time }}</td>
-                <td class="time-cell">{{ res.updated_at | hk_time }}</td>
+                <td>{{ res.created_at | hk_time }}</td>
+                <td>{{ res.updated_at | hk_time }}</td>
                 
                 <td>
                     <div class="btn-group btn-group-sm">
-                        {% if res.status == 'Assigned' %}
-                        <button class="btn btn-dark unassign-btn" 
-                                data-id="{{ res.id }}" 
-                                title="Unassign (Back to Available)">
-                            <i class="bi bi-x-circle"></i>
-                        </button>
-                        {% endif %}
-                        
                         <button class="btn btn-warning edit-btn"
                             data-id="{{ res.id }}"
                             data-provider="{{ res.supplier }}"
@@ -388,6 +379,9 @@
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual-assign" type="button">Manual Assignment</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="cancel-tab" data-bs-toggle="tab" data-bs-target="#cancel-assign" type="button">Cancel Assignment</button>
                     </li>
                 </ul>
                 
@@ -484,6 +478,29 @@
                                 </div>
                             </div>
                             <button type="submit" class="btn btn-danger w-100">Execute Manual Assignment</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-pane fade" id="cancel-assign">
+                        <div class="alert alert-danger">
+                            <small><i class="bi bi-exclamation-triangle-fill"></i> <strong>Warning:</strong> This action will reset the status of SIMs in the specified IMSI range from 'Assigned' to 'Available' and clear customer info.</small>
+                        </div>
+                        <form id="cancelAssignForm">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Start IMSI</label>
+                                    <input type="text" class="form-control" id="cancelStartImsi" required placeholder="e.g. 45400...">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">End IMSI</label>
+                                    <input type="text" class="form-control" id="cancelEndImsi" required placeholder="e.g. 45400...">
+                                </div>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-dark">
+                                    <i class="bi bi-x-circle"></i> Execute Cancel Assignment
+                                </button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -908,6 +925,52 @@ $(document).ready(function() {
         });
     });
 
+    // --- 批量取消分配邏輯 (Range) ---
+    $('#cancelAssignForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const start = $('#cancelStartImsi').val().trim();
+        const end = $('#cancelEndImsi').val().trim();
+        
+        if (!start || !end) {
+            alert("Please enter both Start IMSI and End IMSI.");
+            return;
+        }
+
+        if (!confirm(`DANGER: You are about to UNASSIGN IMSI range ${start} - ${end}.\n\nThese SIMs will become 'Available' and customer info will be cleared.\n\nContinue?`)) {
+            return;
+        }
+        
+        // 顯示簡單的 Loading 狀態 (可選)
+        const btn = $(this).find('button[type="submit"]');
+        const originalText = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Processing...');
+
+        $.ajax({
+            url: '/resources/api/assign/cancel_range',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                start_imsi: start,
+                end_imsi: end
+            }),
+            success: function(res) {
+                if (res.success) {
+                    alert(res.message);
+                    location.reload();
+                } else {
+                    alert('Failed: ' + res.message);
+                    btn.prop('disabled', false).html(originalText);
+                }
+            },
+            error: function(err) {
+                const errMsg = err.responseJSON ? err.responseJSON.message : err.responseText;
+                alert('Error: ' + errMsg);
+                btn.prop('disabled', false).html(originalText);
+            }
+        });
+    });
+
     // --- 原有邏輯 ---
     
     // Provider 改變時更新資源類型
@@ -1092,22 +1155,6 @@ $(document).ready(function() {
                 btn.prop('disabled', false).text('{{ _("import") }}');
             }
         });
-    });
-
-    // 新增：取消分配按鈕邏輯
-    $('.unassign-btn').click(function() {
-        if (!confirm('Are you sure you want to unassign this resource? It will become Available again.')) {
-            return;
-        }
-        
-        const id = $(this).data('id');
-        $.post(`/resources/api/unassign/${id}`)
-            .done(function() {
-                location.reload();
-            })
-            .fail(function(err) {
-                alert('Unassign failed: ' + (err.responseJSON ? err.responseJSON.error : err.statusText));
-            });
     });
 });
 </script>

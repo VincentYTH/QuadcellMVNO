@@ -59,7 +59,6 @@ class SimResourceManager:
         start_date = params.get('assigned_date_start')
         end_date = params.get('assigned_date_end')
         if start_date and end_date:
-            # 假設資料庫存的是字串 YYYY-MM-DD，可以直接字串比較
             query = query.filter(SimResource.assigned_date >= start_date, SimResource.assigned_date <= end_date)
         elif start_date:
             query = query.filter(SimResource.assigned_date >= start_date)
@@ -67,23 +66,18 @@ class SimResourceManager:
             query = query.filter(SimResource.assigned_date <= end_date)
 
         # 4. 段落搜尋 (IMSI, ICCID, MSISDN)
-        # 邏輯：如果有 "-" 則視為範圍，否則視為模糊搜尋
-        
         def apply_range_or_like(q, field, value):
             if not value:
                 return q
             
             value = value.strip()
             if '-' in value:
-                # 嘗試解析範圍
                 parts = value.split('-')
                 if len(parts) == 2:
                     start, end = parts[0].strip(), parts[1].strip()
-                    # 確保兩者都是數字 (簡單驗證)
                     if start.isdigit() and end.isdigit():
                         return q.filter(field >= start, field <= end)
             
-            # 默認模糊搜尋
             return q.filter(field.ilike(f'%{value}%'))
 
         query = apply_range_or_like(query, SimResource.imsi, params.get('imsi'))
@@ -100,7 +94,6 @@ class SimResourceManager:
         sort_field = params.get('sort', 'updated_at')
         sort_order = params.get('order', 'desc')
         
-        # 验证排序字段
         valid_fields = ['supplier', 'type', 'resources_type', 'batch', 
                        'received_date', 'imsi', 'iccid', 'msisdn', 
                        'created_at', 'updated_at']
@@ -108,7 +101,6 @@ class SimResourceManager:
         if sort_field not in valid_fields:
             sort_field = 'updated_at'
         
-        # 应用排序
         if sort_order == 'asc':
             return query.order_by(asc(getattr(SimResource, sort_field)))
         else:
@@ -116,23 +108,42 @@ class SimResourceManager:
     
     @staticmethod
     def get_options():
-        """获取所有选项数据"""
-        # 从数据库获取实际存在的值
+        """获取所有选项数据，合并数据库和配置文件中的值"""
         try:
             existing_types = db.session.query(SimResource.type).distinct().all()
             existing_resources = db.session.query(SimResource.resources_type).distinct().all()
+            # 查詢所有已存在的 Customer, Batch, ReceivedDate
+            existing_customers = db.session.query(SimResource.customer).distinct().all()
+            existing_batches = db.session.query(SimResource.batch).distinct().all()
+            existing_dates = db.session.query(SimResource.received_date).distinct().all()
+            
+            # 合并、去重並排序
+            card_types_set = set([t[0] for t in existing_types if t[0]]) | set(SimResourceManager.CARD_TYPE_OPTIONS)
+            resources_types_set = set([t[0] for t in existing_resources if t[0]]) | set(SimResourceManager.RESOURCES_TYPE_OPTIONS)
+            
+            # 處理列表 (過濾掉 None 和 空字串，並排序)
+            customers_list = sorted([c[0] for c in existing_customers if c[0] and c[0].strip()])
+            batches_list = sorted([b[0] for b in existing_batches if b[0] and b[0].strip()])
+            # 日期通常倒序排列（最新的在前面）可能更方便，或者保持正序，這裡暫用正序以保持一致
+            dates_list = sorted([d[0] for d in existing_dates if d[0] and d[0].strip()], reverse=True) 
             
             return {
                 'providers': SimResourceManager.PROVIDER_OPTIONS,
-                'card_types': [t[0] for t in existing_types if t[0]] or SimResourceManager.CARD_TYPE_OPTIONS,
-                'resources_types': [t[0] for t in existing_resources if t[0]] or SimResourceManager.RESOURCES_TYPE_OPTIONS
+                'card_types': sorted(list(card_types_set)),
+                'resources_types': sorted(list(resources_types_set)),
+                'customers': customers_list,
+                'batches': batches_list,
+                'received_dates': dates_list
             }
         except Exception as e:
             print(f"Error getting options: {e}")
             return {
                 'providers': SimResourceManager.PROVIDER_OPTIONS,
                 'card_types': SimResourceManager.CARD_TYPE_OPTIONS,
-                'resources_types': SimResourceManager.RESOURCES_TYPE_OPTIONS
+                'resources_types': list(SimResourceManager.RESOURCES_TYPE_OPTIONS),
+                'customers': [],
+                'batches': [],
+                'received_dates': []
             }
     
     @staticmethod
@@ -140,7 +151,6 @@ class SimResourceManager:
         """验证资源数据"""
         errors = []
         
-        # 必填字段验证
         required_fields = ['Provider', 'CardType', 'ResourcesType', 'Batch', 
                           'ReceivedDate', 'IMSI', 'ICCID', 'MSISDN']
         
@@ -148,14 +158,8 @@ class SimResourceManager:
             if not data.get(field) or str(data[field]).strip() == '':
                 errors.append(f"{field} 必填")
         
-        # 卡类型验证
         card_type = data.get('CardType', '')
-        if card_type and card_type not in SimResourceManager.CARD_TYPE_OPTIONS:
-            # 不再強制報錯，允許數據庫中已存在的舊類型，或者發出警告
-            # 如果需要嚴格驗證，可以保留。這裡暫時保留但建議前端選項要同步
-            pass 
         
-        # 条件必填验证
         if card_type == 'Soft Profile':
             if not data.get('Ki', '').strip():
                 errors.append("Soft Profile 必须填写 Ki")
@@ -165,14 +169,7 @@ class SimResourceManager:
             if not data.get('LPA', '').strip():
                 errors.append("eSIM 必须填写 LPA")
         
-        # 移除對 ResourcesType 的嚴格集合驗證，允許自定義類型
-        # resource_type = data.get('ResourcesType', '')
-        # if resource_type not in SimResourceManager.RESOURCES_TYPE_OPTIONS:
-        #     errors.append(f"无效的資源类型: {card_type}")        
-        
-        # 重复检查
         if not is_edit:
-            # 僅在新增時檢查重複
             if data.get('IMSI'):
                 existing = SimResource.query.filter_by(imsi=data['IMSI'].strip()).first()
                 if existing:
@@ -183,7 +180,6 @@ class SimResourceManager:
                 if existing:
                     errors.append("ICCID 已存在")
         else:
-            # 編輯時檢查是否與其他資源重複 (排除自己)
             if data.get('IMSI'):
                 existing = SimResource.query.filter(SimResource.imsi == data['IMSI'].strip(), SimResource.id != resource_id).first()
                 if existing:
@@ -250,14 +246,12 @@ class SimResourceManager:
         """获取低库存警告"""
         from sqlalchemy import func
         
-        # 按 type 分组统计
         type_counts = db.session.query(
             SimResource.type,
             func.count(SimResource.id)
         ).group_by(SimResource.type).all()
         type_stats = {row[0]: row[1] for row in type_counts}
         
-        # 低库存警告
         low_stock_alerts = []
         total_count = sum(type_stats.values())
         
@@ -271,18 +265,9 @@ class SimResourceManager:
     
     @staticmethod
     def calculate_assignment_options(provider, card_type, resources_type, quantity):
-        """
-        計算分配選項：
-        1. 找出所有可用庫存，按 ReceivedDate ASC, Batch ASC 排序
-        2. 計算方案 A (FIFO): 跨批次拼接
-        3. 計算方案 B (Single Batch): 尋找單一批次滿足
-        """
-        # 1. 查詢該條件下的所有可用資源，按批次分組統計
-        # 注意：這裡我們先撈出所有可用資源的摘要信息，而不是所有 row
+        """計算分配選項"""
         from sqlalchemy import func
         
-        # 查詢各批次的可用數量
-        # 按 received_date 排序確保先進先出
         batch_stats = db.session.query(
             SimResource.batch,
             SimResource.received_date,
@@ -311,7 +296,7 @@ class SimResourceManager:
 
         options = []
 
-        # --- 方案 A: FIFO (跨批次拼接) ---
+        # --- 方案 A: FIFO ---
         fifo_plan = []
         remaining_qty = quantity
         
@@ -334,12 +319,10 @@ class SimResourceManager:
             "batches": fifo_plan
         })
 
-        # --- 方案 B: Single Batch (單一批次滿足) ---
-        # 尋找第一個數量足夠的單一批次
+        # --- 方案 B: Single Batch ---
         single_batch_plan = None
         for batch, r_date, count in batch_stats:
             if count >= quantity:
-                # 找到一個單一批次足夠
                 single_batch_plan = [{
                     "batch": batch,
                     "received_date": r_date,
@@ -348,8 +331,6 @@ class SimResourceManager:
                 }]
                 break
         
-        # 只有當方案 B 存在，且方案 B 的批次構成與方案 A 不同時，才提供方案 B
-        # (例如方案 A 已經就是只用了 Batch 1，那就不需要顯示重複的方案 B)
         if single_batch_plan:
             is_different = True
             if len(fifo_plan) == 1 and fifo_plan[0]['batch'] == single_batch_plan[0]['batch']:
@@ -370,10 +351,7 @@ class SimResourceManager:
 
     @staticmethod
     def confirm_assignment(plan, customer, assigned_date, provider, card_type, resources_type):
-        """
-        執行分配
-        增加 provider, card_type, resources_type 參數以確保精確匹配
-        """
+        """執行分配"""
         total_assigned = 0
         assigned_ranges = []
 
@@ -382,14 +360,12 @@ class SimResourceManager:
                 batch_name = item['batch']
                 take_qty = item['take']
                 
-                # 找出該批次中符合所有條件且 Available 的卡
-                # 這裡必須嚴格篩選 provider, card_type, resources_type
                 resources_to_update = SimResource.query.filter(
                     SimResource.batch == batch_name,
                     SimResource.status == 'Available',
-                    SimResource.supplier == provider,          # 新增篩選
-                    SimResource.type == card_type,             # 新增篩選
-                    SimResource.resources_type == resources_type # 新增篩選
+                    SimResource.supplier == provider,
+                    SimResource.type == card_type,
+                    SimResource.resources_type == resources_type
                 ).order_by(
                     SimResource.imsi.asc()
                 ).limit(take_qty).all()
@@ -397,7 +373,6 @@ class SimResourceManager:
                 if len(resources_to_update) < take_qty:
                     raise Exception(f"批次 {batch_name} 中符合條件的庫存不足 (需求 {take_qty}, 實際 {len(resources_to_update)})，請刷新頁面重試")
                 
-                # 更新狀態
                 first_imsi = resources_to_update[0].imsi
                 last_imsi = resources_to_update[-1].imsi
                 
@@ -422,11 +397,8 @@ class SimResourceManager:
 
     @staticmethod
     def manual_assignment(start_imsi, end_imsi, customer, assigned_date):
-        """
-        手動分配：根據 IMSI 範圍
-        """
+        """手動分配：根據 IMSI 範圍"""
         try:
-            # 1. 驗證輸入
             if not start_imsi.isdigit() or not end_imsi.isdigit():
                 return {"success": False, "message": "IMSI 必須為數字"}
             
@@ -437,31 +409,21 @@ class SimResourceManager:
                 return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
             
             count = end - start + 1
-            if count > 10000: # 簡單防護
+            if count > 10000:
                  return {"success": False, "message": "單次操作數量過大 (上限 10000)"}
 
-            # 2. 查詢範圍內的資源
-            # 由於 IMSI 是字串存儲，直接使用 between 可能會有字典序問題
-            # 但如果長度一致，字典序等於數值序。
-            # 為保險起見，我們找出該範圍內的所有記錄進行檢查
-            
-            # 使用 cast 轉成數字比較會更準確，但在不同 DB 語法不同
-            # 這裡簡化處理：假設 IMSI 長度相同，直接用字串比較
             target_resources = SimResource.query.filter(
                 SimResource.imsi >= start_imsi,
                 SimResource.imsi <= end_imsi
             ).all()
             
-            # 3. 嚴格驗證
             if len(target_resources) == 0:
                 return {"success": False, "message": f"範圍 {start_imsi} - {end_imsi} 內找不到任何資源"}
             
-            # 檢查是否所有找到的資源都在請求範圍內 (再次確認，雖 SQL 已濾)
             valid_resources = []
             assigned_list = []
             
             for res in target_resources:
-                # 再次確保數值在範圍內
                 if not (start <= int(res.imsi) <= end):
                     continue
                     
@@ -471,14 +433,12 @@ class SimResourceManager:
                     valid_resources.append(res)
             
             if assigned_list:
-                # 顯示前 3 個重複的
                 preview = ", ".join(assigned_list[:3])
                 return {
                     "success": False, 
                     "message": f"範圍內有 {len(assigned_list)} 張卡已被分配或不可用。例如: {preview}..."
                 }
             
-            # 4. 執行更新
             for res in valid_resources:
                 res.status = 'Assigned'
                 res.customer = customer
@@ -494,19 +454,49 @@ class SimResourceManager:
         except Exception as e:
             db.session.rollback()
             return {"success": False, "message": f"系統錯誤: {str(e)}"}
-        
+
     @staticmethod
-    def unassign_resource(resource_id):
-        """取消分配：將狀態重置為 Available 並清空客戶資訊"""
-        resource = SimResource.query.get_or_404(resource_id)
-        
-        if resource.status == 'Available':
-            return resource # 本來就是 Available，無需操作
+    def cancel_assignment_by_range(start_imsi, end_imsi):
+        """
+        批量取消分配：根據 IMSI 範圍將狀態重置為 Available
+        """
+        try:
+            # 1. 驗證輸入
+            if not start_imsi.isdigit() or not end_imsi.isdigit():
+                return {"success": False, "message": "IMSI 必須為數字"}
             
-        resource.status = 'Available'
-        resource.customer = None
-        resource.assigned_date = None
-        # resource.order_id = None # 如果有這個欄位也清空
-        
-        db.session.commit()
-        return resource
+            start = int(start_imsi)
+            end = int(end_imsi)
+            
+            if start > end:
+                return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
+            
+            # 2. 查詢範圍內且狀態為 Assigned 的資源
+            target_resources = SimResource.query.filter(
+                SimResource.imsi >= start_imsi,
+                SimResource.imsi <= end_imsi,
+                SimResource.status == 'Assigned'
+            ).all()
+            
+            count = 0
+            for res in target_resources:
+                # 嚴格數字過濾
+                if start <= int(res.imsi) <= end:
+                    res.status = 'Available'
+                    res.customer = None
+                    res.assigned_date = None
+                    count += 1
+            
+            if count == 0:
+                return {"success": False, "message": f"範圍 {start_imsi} - {end_imsi} 內找不到任何已分配(Assigned)的資源"}
+
+            db.session.commit()
+            
+            return {
+                "success": True, 
+                "message": f"成功取消分配！共 {count} 張卡 (IMSI: {start_imsi} - {end_imsi}) 已重置為 Available"
+            }
+
+        except Exception as e:
+            db.session.rollback()
+            return {"success": False, "message": f"系統錯誤: {str(e)}"}
