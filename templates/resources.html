@@ -12,6 +12,12 @@
         margin-bottom: 20px;
     }
     
+    /* 清除按鈕樣式調整 */
+    .input-group-sm .btn-clear {
+        padding: 0.25rem 0.5rem;
+        z-index: 4;
+    }
+    
     /* 表格標題排序樣式 */
     .sortable-header {
         cursor: pointer;
@@ -33,10 +39,19 @@
         overflow-x: auto;
     }
     
+    /* 縮小表格字體與間距 */
+    .table {
+        font-size: 0.85rem; 
+    }
+    
+    .table th, .table td {
+        padding: 0.35rem 0.5rem;
+    }
+
     /* 按鈕組樣式 */
     .btn-group-sm .btn {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.875rem;
+        padding: 0.2rem 0.4rem;
+        font-size: 0.8rem;
     }
 
     /* 資源分配選項卡片樣式 */
@@ -57,6 +72,35 @@
         border-color: #0d6efd;
         border-width: 2px;
     }
+
+    /* 導出欄位選擇樣式 */
+    .column-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 10px;
+    }
+    .column-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+        background-color: #fff;
+    }
+    .column-item:last-child {
+        border-bottom: none;
+    }
+    .column-handle {
+        cursor: move;
+        color: #adb5bd;
+        margin-right: 10px;
+    }
+    .column-actions button {
+        padding: 0 5px;
+        font-size: 0.8rem;
+    }
 </style>
 {% endblock %}
 
@@ -66,17 +110,27 @@
 <div class="d-flex justify-content-end mb-3">
     <div class="btn-group">
         <button type="button" class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#assignModal">
-            <i class="bi bi-box-seam"></i> Resource Assignment
+            <i class="bi bi-box-seam"></i> 資源分配
         </button>
         
+        <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#exportModal">
+            <i class="bi bi-file-earmark-excel"></i> 導出資源
+        </button>
+
         <a href="/api/template/sim_resources" class="btn btn-info me-2">
-            <i class="bi bi-download"></i> {{ _('download_template') }}
+            <i class="bi bi-download"></i> 下載導入模板
         </a>
-        <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#importModal">
+        
+        <button type="button" class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#importModal">
             <i class="bi bi-upload"></i> {{ _('import_resources') }}
         </button>
+        
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">
             <i class="bi bi-plus"></i> {{ _('add_resource') }}
+        </button>
+        
+        <button type="button" class="btn btn-danger ms-2" id="batchDeleteBtn">
+            <i class="bi bi-trash"></i> 批量刪除
         </button>
     </div>
 </div>
@@ -88,91 +142,123 @@
         <div class="row mb-2 g-2">
             <div class="col-md-2">
                 <label class="form-label small">Provider</label>
-                <select name="provider" class="form-control form-control-sm">
-                    <option value="">All</option>
-                    {% for provider in options.providers %}
-                        <option value="{{ provider }}" {% if search_params.provider == provider %}selected{% endif %}>{{ provider }}</option>
-                    {% endfor %}
-                </select>
+                <div class="input-group input-group-sm">
+                    <select name="provider" class="form-select">
+                        <option value="">All</option>
+                        {% for provider in options.providers %}
+                            <option value="{{ provider }}" {% if search_params.provider == provider %}selected{% endif %}>{{ provider }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
             
             <div class="col-md-2">
                 <label class="form-label small">CardType</label>
-                <select name="card_type" class="form-control form-control-sm">
-                    <option value="">All</option>
-                    {% for card_type in options.card_types %}
-                        <option value="{{ card_type }}" {% if search_params.card_type == card_type %}selected{% endif %}>{{ card_type }}</option>
-                    {% endfor %}
-                </select>
+                <div class="input-group input-group-sm">
+                    <select name="card_type" class="form-select">
+                        <option value="">All</option>
+                        {% for card_type in options.card_types %}
+                            <option value="{{ card_type }}" {% if search_params.card_type == card_type %}selected{% endif %}>{{ card_type }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
             
             <div class="col-md-2">
                 <label class="form-label small">ResourcesType</label>
-                <select name="resources_type" class="form-control form-control-sm">
-                    <option value="">All</option>
-                    {% for rt in options.resources_types %}
-                        <option value="{{ rt }}" {% if search_params.resources_type == rt %}selected{% endif %}>{{ rt }}</option>
-                    {% endfor %}
-                </select>
+                <div class="input-group input-group-sm">
+                    <select name="resources_type" class="form-select">
+                        <option value="">All</option>
+                        {% for rt in options.resources_types %}
+                            <option value="{{ rt }}" {% if search_params.resources_type == rt %}selected{% endif %}>{{ rt }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
             
-            <div class="col-md-2"> <label class="form-label small">Batch</label>
-                <select name="batch" class="form-control form-control-sm">
-                    <option value="">All</option>
-                    {% for batch in options.batches %}
-                        <option value="{{ batch }}" {% if search_params.batch == batch %}selected{% endif %}>{{ batch }}</option>
-                    {% endfor %}
-                </select>
+            <div class="col-md-3"> 
+                <label class="form-label small">Batch</label>
+                <div class="input-group input-group-sm">
+                    <select name="batch" class="form-select">
+                        <option value="">All</option>
+                        {% for batch in options.batches %}
+                            <option value="{{ batch }}" {% if search_params.batch == batch %}selected{% endif %}>{{ batch }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
 
-            <div class="col-md-2"> <label class="form-label small">Received Date</label>
-                <select name="received_date" class="form-control form-control-sm">
-                    <option value="">All</option>
-                    {% for r_date in options.received_dates %}
-                        <option value="{{ r_date }}" {% if search_params.received_date == r_date %}selected{% endif %}>{{ r_date }}</option>
-                    {% endfor %}
-                </select>
+            <div class="col-md-3"> 
+                <label class="form-label small">Received Date</label>
+                <div class="input-group input-group-sm">
+                    <select name="received_date" class="form-select">
+                        <option value="">All</option>
+                        {% for r_date in options.received_dates %}
+                            <option value="{{ r_date }}" {% if search_params.received_date == r_date %}selected{% endif %}>{{ r_date }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
         </div>
         
         <div class="row mb-2 g-2">
             <div class="col-md-4">
                 <label class="form-label small">IMSI (Range supported: 123-125)</label>
-                <input type="text" name="imsi" class="form-control form-control-sm" 
-                       placeholder="e.g. 454...01 or 454...01-454...10" value="{{ search_params.imsi }}">
+                <div class="input-group input-group-sm">
+                    <input type="text" name="imsi" class="form-control" 
+                           placeholder="e.g. 454...01 or 454...01-454...10" value="{{ search_params.imsi }}">
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
             
             <div class="col-md-4">
                 <label class="form-label small">ICCID (Range supported)</label>
-                <input type="text" name="iccid" class="form-control form-control-sm" 
-                       placeholder="Single or Start-End" value="{{ search_params.iccid }}">
+                <div class="input-group input-group-sm">
+                    <input type="text" name="iccid" class="form-control" 
+                           placeholder="Single or Start-End" value="{{ search_params.iccid }}">
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
             
             <div class="col-md-4">
                 <label class="form-label small">MSISDN (Range supported)</label>
-                <input type="text" name="msisdn" class="form-control form-control-sm" 
-                       placeholder="Single or Start-End" value="{{ search_params.msisdn }}">
+                <div class="input-group input-group-sm">
+                    <input type="text" name="msisdn" class="form-control" 
+                           placeholder="Single or Start-End" value="{{ search_params.msisdn }}">
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
         </div>
         
         <div class="row mb-2 g-2 align-items-end">
             <div class="col-md-2">
                 <label class="form-label small">Status</label>
-                <select name="status" class="form-control form-control-sm">
-                    <option value="">All</option>
-                    <option value="Available" {% if search_params.status == 'Available' %}selected{% endif %}>Available</option>
-                    <option value="Assigned" {% if search_params.status == 'Assigned' %}selected{% endif %}>Assigned</option>
-                </select>
+                <div class="input-group input-group-sm">
+                    <select name="status" class="form-select">
+                        <option value="">All</option>
+                        <option value="Available" {% if search_params.status == 'Available' %}selected{% endif %}>Available</option>
+                        <option value="Assigned" {% if search_params.status == 'Assigned' %}selected{% endif %}>Assigned</option>
+                    </select>
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
 
-            <div class="col-md-2">
+            <div class="col-md-2"> 
                 <label class="form-label small">Customer</label>
-                <select name="customer" class="form-control form-control-sm">
-                    <option value="">All</option>
-                    {% for cust in options.customers %}
-                        <option value="{{ cust }}" {% if search_params.customer == cust %}selected{% endif %}>{{ cust }}</option>
-                    {% endfor %}
-                </select>
+                <div class="input-group input-group-sm">
+                    <select name="customer" class="form-select">
+                        <option value="">All</option>
+                        {% for cust in options.customers %}
+                            <option value="{{ cust }}" {% if search_params.customer == cust %}selected{% endif %}>{{ cust }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                </div>
             </div>
 
              <div class="col-md-4">
@@ -181,6 +267,7 @@
                     <input type="date" name="assigned_date_start" class="form-control" value="{{ search_params.assigned_date_start }}">
                     <span class="input-group-text">to</span>
                     <input type="date" name="assigned_date_end" class="form-control" value="{{ search_params.assigned_date_end }}">
+                    <button class="btn btn-outline-secondary btn-clear" type="button" data-target="date-range"><i class="bi bi-x"></i></button>
                 </div>
             </div>
             
@@ -200,6 +287,9 @@
     <table class="table table-striped table-hover align-middle">
         <thead>
             <tr>
+                <th style="width: 30px;">
+                    <input type="checkbox" class="form-check-input" id="selectAll">
+                </th>
                 <th class="sortable-header" onclick="sortTable('status')">
                     Status
                     {% if search_params.sort == 'status' %}
@@ -279,6 +369,9 @@
             {% for res in resources %}
             <tr>
                 <td>
+                    <input type="checkbox" class="form-check-input resource-checkbox" value="{{ res.id }}">
+                </td>
+                <td>
                     {% if res.status == 'Available' %}
                         <span class="badge bg-success">Available</span>
                     {% else %}
@@ -332,12 +425,16 @@
 </div>
 
 <div class="d-flex justify-content-between align-items-center mt-3">
-    <div>
-        <select class="form-select form-select-sm" style="width: auto; display: inline-block;" onchange="changePerPage(this.value)">
+    <div class="d-flex align-items-center">
+        <select class="form-select form-select-sm me-3" style="width: auto;" onchange="changePerPage(this.value)">
             <option value="20" {% if search_params.per_page == 20 %}selected{% endif %}>20 / page</option>
             <option value="50" {% if search_params.per_page == 50 %}selected{% endif %}>50 / page</option>
             <option value="100" {% if search_params.per_page == 100 %}selected{% endif %}>100 / page</option>
         </select>
+        
+        <span class="text-muted small">
+            Total <strong>{{ pagination.total }}</strong> records
+        </span>
     </div>
 
     {% if pagination.pages > 1 %}
@@ -666,6 +763,79 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">導出資源</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="exportForm">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">1. 導出範圍</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="exportScope" id="scopeSearch" value="search" checked>
+                            <label class="form-check-label" for="scopeSearch">
+                                根據當前搜索結果導出 (包含所有分頁)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="exportScope" id="scopeSelected" value="selected">
+                            <label class="form-check-label" for="scopeSelected">
+                                根據已選擇的項目導出 (<span id="selectedCountDisplay">0</span> 個)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-bold mb-0">2. 欄位選擇與排序</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="selectAllColumns">
+                                <label class="form-check-label small" for="selectAllColumns">全選</label>
+                            </div>
+                        </div>
+                        <div class="column-list" id="columnList">
+                            </div>
+                    </div>
+
+                    <div class="mb-3 p-2 bg-light rounded border">
+                        <label class="form-label fw-bold small text-muted">額外篩選 (僅適用於"當前搜索結果")</label>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small">Customer</label>
+                                <select id="exportCustomer" class="form-select form-select-sm">
+                                    <option value="ALL">ALL</option>
+                                    {% for cust in options.customers %}
+                                        <option value="{{ cust }}">{{ cust }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small">Assign Date</label>
+                                <select id="exportAssignDate" class="form-select form-select-sm">
+                                    <option value="ALL">ALL</option>
+                                    {% for date in options.assigned_dates %}
+                                        <option value="{{ date }}">{{ date }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" id="btnExecuteExport" class="btn btn-success">
+                    <i class="bi bi-download"></i> 確認導出 .xlsx
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -748,6 +918,20 @@ function updateResourceTypes(provider, selectedValue) {
         resourcesTypeSelect.val(selectedValue);
     }
 }
+
+// 全局變量 (用於導出功能)
+var selectedResourceIds = [];
+
+// 定義所有可用欄位 (導出用)
+var availableColumns = [
+    "Provider", "CardType", "ResourcesType", "Batch", "ReceivedDate", 
+    "IMSI", "ICCID", "MSISDN", "Ki", "OPC", "LPA", 
+    "PIN1", "PUK1", "PIN2", "PUK2", 
+    "Customer", "Assign Date", "Status", "Created At", "Updated At"
+];
+
+// 默認勾選的欄位
+var defaultCheckedCols = ['IMSI', 'ICCID', 'MSISDN'];
 
 $(document).ready(function() {
     // 設置資源分配日期默認值為今天
@@ -971,8 +1155,258 @@ $(document).ready(function() {
         });
     });
 
-    // --- 原有邏輯 ---
+    // --- 複選框邏輯 ---
     
+    // 全選/取消全選
+    $('#selectAll').change(function() {
+        var isChecked = $(this).is(':checked');
+        $('.resource-checkbox').prop('checked', isChecked);
+        updateSelectedIds();
+    });
+
+    // 單個複選框變更
+    $(document).on('change', '.resource-checkbox', function() {
+        updateSelectedIds();
+        
+        // 更新全選按鈕狀態
+        var allChecked = $('.resource-checkbox:checked').length === $('.resource-checkbox').length;
+        $('#selectAll').prop('checked', allChecked);
+    });
+
+    function updateSelectedIds() {
+        selectedResourceIds = [];
+        $('.resource-checkbox:checked').each(function() {
+            selectedResourceIds.push(parseInt($(this).val()));
+        });
+        $('#selectedCountDisplay').text(selectedResourceIds.length);
+    }
+
+    // --- 導出模態框邏輯 ---
+
+    // 初始化欄位列表
+    function initColumnList() {
+        var container = $('#columnList');
+        container.empty();
+        
+        availableColumns.forEach(function(col) {
+            // 判斷是否默認勾選
+            var isChecked = defaultCheckedCols.includes(col);
+            
+            var item = `
+                <div class="column-item" data-col="${col}">
+                    <div>
+                        <i class="bi bi-grip-vertical column-handle"></i>
+                        <input type="checkbox" class="form-check-input me-2 col-checkbox" ${isChecked ? 'checked' : ''}>
+                        <span>${col}</span>
+                    </div>
+                    <div class="column-actions btn-group">
+                        <button type="button" class="btn btn-sm btn-light border btn-up" title="Up"><i class="bi bi-chevron-up"></i></button>
+                        <button type="button" class="btn btn-sm btn-light border btn-down" title="Down"><i class="bi bi-chevron-down"></i></button>
+                    </div>
+                </div>
+            `;
+            container.append(item);
+        });
+        
+        // 初始化全選複選框的狀態
+        updateSelectAllColumnsState();
+    }
+    
+    initColumnList();
+
+    // 監聽 Customer 下拉選單變化
+    $('#exportCustomer').change(function() {
+        var val = $(this).val();
+        var targetCols = ['Customer', 'Assign Date'];
+        
+        if (val !== 'ALL') {
+            // 如果選擇了特定客戶，勾選相關欄位
+            targetCols.forEach(col => {
+                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', true);
+            });
+        } else {
+            // 如果是 ALL，取消勾選 (根據需求)
+            targetCols.forEach(col => {
+                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', false);
+            });
+        }
+        updateSelectAllColumnsState();
+    });
+
+    // 監聽欄位全選/全不選
+    $('#selectAllColumns').change(function() {
+        var isChecked = $(this).is(':checked');
+        $('.col-checkbox').prop('checked', isChecked);
+    });
+    
+    // 監聽單個欄位複選框變化，更新全選狀態
+    $(document).on('change', '.col-checkbox', function() {
+        updateSelectAllColumnsState();
+    });
+    
+    function updateSelectAllColumnsState() {
+        var all = $('.col-checkbox').length;
+        var checked = $('.col-checkbox:checked').length;
+        $('#selectAllColumns').prop('checked', all > 0 && all === checked);
+        $('#selectAllColumns').prop('indeterminate', checked > 0 && checked < all);
+    }
+
+    // 欄位排序按鈕事件
+    $(document).on('click', '.btn-up', function() {
+        var item = $(this).closest('.column-item');
+        var prev = item.prev('.column-item');
+        if (prev.length) {
+            item.insertBefore(prev);
+        }
+    });
+
+    $(document).on('click', '.btn-down', function() {
+        var item = $(this).closest('.column-item');
+        var next = item.next('.column-item');
+        if (next.length) {
+            item.insertAfter(next);
+        }
+    });
+
+    // 執行導出
+    $('#btnExecuteExport').click(function() {
+        var scope = $('input[name="exportScope"]:checked').val();
+        
+        // 驗證
+        if (scope === 'selected' && selectedResourceIds.length === 0) {
+            alert("請先選擇至少一個項目！");
+            return;
+        }
+
+        // 收集選中的欄位（按順序）
+        var selectedColumns = [];
+        $('#columnList .column-item').each(function() {
+            if ($(this).find('input[type="checkbox"]').is(':checked')) {
+                selectedColumns.push($(this).data('col'));
+            }
+        });
+
+        if (selectedColumns.length === 0) {
+            alert("請至少選擇一個導出欄位！");
+            return;
+        }
+
+        // 獲取當前搜索參數 (從 URL 獲取比較準確)
+        var searchParams = {};
+        var urlParams = new URLSearchParams(window.location.search);
+        for(var pair of urlParams.entries()) {
+           searchParams[pair[0]] = pair[1]; 
+        }
+
+        // 額外過濾器
+        var filterCustomer = $('#exportCustomer').val();
+        var filterAssignDate = $('#exportAssignDate').val();
+
+        // 準備請求數據
+        var payload = {
+            scope: scope,
+            selected_ids: selectedResourceIds,
+            search_params: searchParams,
+            filter_customer: filterCustomer,
+            filter_assigned_date: filterAssignDate,
+            columns: selectedColumns
+        };
+
+        // 禁用按鈕，顯示加載
+        var btn = $(this);
+        var originalText = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 導出中...');
+
+        // 發送請求 (使用 fetch 以處理 blob 下載)
+        fetch('/resources/api/export_custom', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.blob();
+            }
+            return response.json().then(json => { throw new Error(json.error || '導出失敗') });
+        })
+        .then(blob => {
+            // 創建下載鏈接
+            var url = window.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            // 生成文件名
+            var filename = 'sim_resources_export_' + new Date().toISOString().slice(0,19).replace(/[-:T]/g,'') + '.xlsx';
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            
+            // 關閉模態框
+            $('#exportModal').modal('hide');
+        })
+        .catch(error => {
+            alert('錯誤: ' + error.message);
+        })
+        .finally(() => {
+            btn.prop('disabled', false).html(originalText);
+        });
+    });
+
+    // --- 新增：搜索欄清除按鈕邏輯 ---
+    $('.btn-clear').click(function() {
+        var $inputGroup = $(this).closest('.input-group');
+        
+        // 處理日期範圍 (有兩個 input)
+        if ($(this).data('target') === 'date-range') {
+            $inputGroup.find('input').val('');
+        } else {
+            // 處理一般單一 input 或 select
+            var $input = $inputGroup.find('input, select');
+            $input.val('').trigger('change'); // 觸發 change 事件以更新可能的依賴
+        }
+    });
+
+    // --- 批量刪除功能 ---
+    $('#batchDeleteBtn').click(function() {
+        if (selectedResourceIds.length === 0) {
+            alert('請先在表格中勾選要刪除的資源！');
+            return;
+        }
+        
+        if (!confirm(`警告：您確定要永久刪除選中的 ${selectedResourceIds.length} 個資源嗎？此操作無法撤銷！`)) {
+            return;
+        }
+        
+        var btn = $(this);
+        var originalHtml = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 刪除中...');
+        
+        $.ajax({
+            url: '/resources/api/delete_batch',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                resource_ids: selectedResourceIds
+            }),
+            success: function(res) {
+                if (res.success) {
+                    alert(res.message);
+                    location.reload(); 
+                } else {
+                    alert('刪除失敗: ' + res.message);
+                    btn.prop('disabled', false).html(originalHtml);
+                }
+            },
+            error: function(xhr) {
+                var errorMsg = xhr.responseJSON ? xhr.responseJSON.message : '未知錯誤';
+                alert('請求失敗: ' + errorMsg);
+                btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+
     // Provider 改變時更新資源類型
     $('#provider').change(function() {
         updateResourceTypes($(this).val());
@@ -1039,7 +1473,7 @@ $(document).ready(function() {
     });
 
     // 編輯按鈕填充數據
-    $('.edit-btn').click(function() {
+    $(document).on('click', '.edit-btn', function() {
         const modal = $('#addModal');
         modal.find('.modal-title').text('編輯資源');
         
@@ -1076,7 +1510,7 @@ $(document).ready(function() {
     });
 
     // 刪除按鈕
-    $('.delete-btn').click(function() {
+    $(document).on('click', '.delete-btn', function() {
         if (confirm('{{ _("confirm_delete") }}')) {
             const id = $(this).data('id');
             $.post(`/resources/api/delete/${id}`, function() {

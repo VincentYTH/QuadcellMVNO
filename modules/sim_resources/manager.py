@@ -96,6 +96,7 @@ class SimResourceManager:
         
         valid_fields = ['supplier', 'type', 'resources_type', 'batch', 
                        'received_date', 'imsi', 'iccid', 'msisdn', 
+                       'customer', 'assigned_date', 'status',
                        'created_at', 'updated_at']
         
         if sort_field not in valid_fields:
@@ -112,10 +113,11 @@ class SimResourceManager:
         try:
             existing_types = db.session.query(SimResource.type).distinct().all()
             existing_resources = db.session.query(SimResource.resources_type).distinct().all()
-            # 查詢所有已存在的 Customer, Batch, ReceivedDate
+            # 查詢所有已存在的 Customer, Batch, ReceivedDate, AssignedDate
             existing_customers = db.session.query(SimResource.customer).distinct().all()
             existing_batches = db.session.query(SimResource.batch).distinct().all()
             existing_dates = db.session.query(SimResource.received_date).distinct().all()
+            existing_assigned_dates = db.session.query(SimResource.assigned_date).distinct().all()
             
             # 合并、去重並排序
             card_types_set = set([t[0] for t in existing_types if t[0]]) | set(SimResourceManager.CARD_TYPE_OPTIONS)
@@ -124,8 +126,8 @@ class SimResourceManager:
             # 處理列表 (過濾掉 None 和 空字串，並排序)
             customers_list = sorted([c[0] for c in existing_customers if c[0] and c[0].strip()])
             batches_list = sorted([b[0] for b in existing_batches if b[0] and b[0].strip()])
-            # 日期通常倒序排列（最新的在前面）可能更方便，或者保持正序，這裡暫用正序以保持一致
-            dates_list = sorted([d[0] for d in existing_dates if d[0] and d[0].strip()], reverse=True) 
+            dates_list = sorted([d[0] for d in existing_dates if d[0] and d[0].strip()], reverse=True)
+            assigned_dates_list = sorted([d[0] for d in existing_assigned_dates if d[0] and d[0].strip()], reverse=True)
             
             return {
                 'providers': SimResourceManager.PROVIDER_OPTIONS,
@@ -133,7 +135,8 @@ class SimResourceManager:
                 'resources_types': sorted(list(resources_types_set)),
                 'customers': customers_list,
                 'batches': batches_list,
-                'received_dates': dates_list
+                'received_dates': dates_list,
+                'assigned_dates': assigned_dates_list # 新增
             }
         except Exception as e:
             print(f"Error getting options: {e}")
@@ -143,8 +146,45 @@ class SimResourceManager:
                 'resources_types': list(SimResourceManager.RESOURCES_TYPE_OPTIONS),
                 'customers': [],
                 'batches': [],
-                'received_dates': []
+                'received_dates': [],
+                'assigned_dates': []
             }
+    
+    @staticmethod
+    def get_resources_for_export(scope, selected_ids=None, search_params=None, extra_filters=None):
+        """
+        獲取導出數據
+        scope: 'search' (當前搜索結果) 或 'selected' (已選項目)
+        selected_ids: ID列表 (當 scope='selected' 時使用)
+        search_params: 搜索參數 (當 scope='search' 時使用)
+        extra_filters: 額外過濾器 (Customer, AssignedDate)
+        """
+        query = SimResource.query
+        
+        # 1. 確定基礎範圍
+        if scope == 'selected' and selected_ids:
+            query = query.filter(SimResource.id.in_(selected_ids))
+        elif scope == 'search' and search_params:
+            # 重用搜索邏輯
+            query = SimResourceManager._apply_search_filters(query, search_params)
+            # 應用排序以保持一致性
+            query = SimResourceManager._apply_sorting(query, search_params)
+        
+        # 2. 應用額外過濾器 (Customer 和 Assign Date)
+        if extra_filters:
+            customer = extra_filters.get('customer')
+            assigned_date = extra_filters.get('assigned_date')
+            
+            if customer and customer != 'ALL':
+                query = query.filter(SimResource.customer == customer)
+            
+            if assigned_date and assigned_date != 'ALL':
+                query = query.filter(SimResource.assigned_date == assigned_date)
+        
+        return query.all()
+
+    # ... (其餘 validate_resource_data, create, update 等方法保持不變) ...
+    # 為了節省篇幅，這裡只列出有修改的部分，實際文件中請保留其他現有方法
     
     @staticmethod
     def validate_resource_data(data, is_edit=False, resource_id=None):
@@ -195,6 +235,11 @@ class SimResourceManager:
     @staticmethod
     def create_resource(data):
         """创建新资源"""
+        
+        # 判斷狀態
+        customer = data.get('Customer', '').strip() or None
+        status = 'Assigned' if customer else 'Available'        
+        
         resource = SimResource(
             type=data['CardType'].strip(),
             supplier=data['Provider'].strip(),
@@ -210,7 +255,10 @@ class SimResourceManager:
             pin1=data.get('PIN1', '').strip() or None,
             puk1=data.get('PUK1', '').strip() or None,
             pin2=data.get('PIN2', '').strip() or None,
-            puk2=data.get('PUK2', '').strip() or None
+            puk2=data.get('PUK2', '').strip() or None,
+            status=status,
+            customer=customer,
+            assigned_date=data.get('Assign Date', '').strip() or None            
         )
         
         db.session.add(resource)
@@ -237,6 +285,16 @@ class SimResourceManager:
         resource.puk1 = data.get('PUK1', '').strip() or None
         resource.pin2 = data.get('PIN2', '').strip() or None
         resource.puk2 = data.get('PUK2', '').strip() or None
+        
+        # 更新客戶資訊
+        if 'Customer' in data: # 只有當數據中包含 Customer 時才更新 (如果是從簡單編輯表格來)
+            customer = data.get('Customer', '').strip() or None
+            resource.customer = customer
+            # 自動更新狀態邏輯 (可選)
+            # if customer: resource.status = 'Assigned'
+            
+        if 'Assign Date' in data:
+            resource.assigned_date = data.get('Assign Date', '').strip() or None        
         
         db.session.commit()
         return resource
@@ -500,3 +558,38 @@ class SimResourceManager:
         except Exception as e:
             db.session.rollback()
             return {"success": False, "message": f"系統錯誤: {str(e)}"}
+    
+    @staticmethod
+    def unassign_resource(resource_id):
+        """取消分配：將狀態重置為 Available 並清空客戶資訊"""
+        resource = SimResource.query.get_or_404(resource_id)
+        
+        if resource.status == 'Available':
+            return resource
+            
+        resource.status = 'Available'
+        resource.customer = None
+        resource.assigned_date = None
+        
+        db.session.commit()
+        return resource
+    
+    @staticmethod
+    def delete_batch_resources(resource_ids):
+        """批量刪除資源"""
+        try:
+            if not resource_ids:
+                return {"success": False, "message": "未選擇任何資源"}
+            
+            # 使用 SQLAlchemy 的 in_ 操作符進行批量刪除
+            # synchronize_session=False 對於批量刪除更高效
+            deleted_count = SimResource.query.filter(SimResource.id.in_(resource_ids)).delete(synchronize_session=False)
+            db.session.commit()
+            
+            return {
+                "success": True, 
+                "message": f"成功刪除 {deleted_count} 個資源"
+            }
+        except Exception as e:
+            db.session.rollback()
+            return {"success": False, "message": f"刪除失敗: {str(e)}"}    
