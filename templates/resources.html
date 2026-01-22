@@ -990,6 +990,14 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                    <span class="text-muted small"><i class="bi bi-info-circle"></i> 僅統計狀態為 Available 的資源</span>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="showZeroStock" checked>
+                        <label class="form-check-label small fw-bold" for="showZeroStock">顯示 0 庫存項目</label>
+                    </div>
+                </div>
+                
                 <div id="inventoryLoading" class="text-center py-3">
                     <div class="spinner-border text-info" role="status">
                         <span class="visually-hidden">Loading...</span>
@@ -1846,38 +1854,65 @@ $(document).ready(function() {
                 var stats = res.stats;
                 var threshold = res.threshold;
                 var html = '';
+                var showZero = $('#showZeroStock').is(':checked');
                 
                 if (Object.keys(stats).length === 0) {
                     html = '<div class="alert alert-warning text-center">暫無庫存資料</div>';
                 } else {
-                    html += '<div class="list-group">';
+                    html += '<div class="accordion" id="inventoryAccordion">';
                     
-                    // 遍歷供應商
+                    var supplierIndex = 0;
                     for (var supplier in stats) {
-                        html += `<div class="list-group-item">`;
-                        html += `<h6 class="mb-2 fw-bold text-primary border-bottom pb-1">${supplier}</h6>`;
-                        html += `<ul class="list-unstyled mb-0 ms-2">`;
+                        supplierIndex++;
+                        html += `
+                        <div class="accordion-item border-0 border-bottom">
+                            <h2 class="accordion-header" id="heading${supplierIndex}">
+                                <button class="accordion-button ${supplierIndex === 1 ? '' : 'collapsed'} bg-light text-primary fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${supplierIndex}">
+                                    ${supplier}
+                                </button>
+                            </h2>
+                            <div id="collapse${supplierIndex}" class="accordion-collapse collapse ${supplierIndex === 1 ? 'show' : ''}" data-bs-parent="#inventoryAccordion">
+                                <div class="accordion-body pt-2 pb-2">`;
                         
-                        // 遍歷卡類型
-                        var types = stats[supplier];
-                        for (var type in types) {
-                            var count = types[type];
-                            var alertHtml = '';
+                        // 遍歷 CardType
+                        var cardTypes = stats[supplier];
+                        for (var cardType in cardTypes) {
+                            html += `<div class="mb-3">
+                                        <div class="badge bg-secondary mb-2">${cardType}</div>
+                                        <ul class="list-group list-group-flush border-start ps-2">`;
                             
-                            // 低庫存警告
-                            if (count < threshold) {
-                                alertHtml = `<span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle"></i> 低庫存</span>`;
+                            // 遍歷 ResourcesType
+                            var resTypes = cardTypes[cardType];
+                            for (var resType in resTypes) {
+                                var count = resTypes[resType];
+                                var alertHtml = '';
+                                
+                                // 狀態標籤
+                                if (count === 0) {
+                                    alertHtml = `<span class="badge bg-light text-muted border">缺貨</span>`;
+                                } else if (count < threshold) {
+                                    alertHtml = `<span class="badge bg-danger">低庫存</span>`;
+                                }
+                                
+                                // 根據數量和開關決定是否顯示
+                                var hiddenClass = (count === 0 && !showZero) ? 'd-none' : '';
+                                var textClass = count > 0 ? 'text-dark fw-bold' : 'text-muted';
+                                
+                                html += `<li class="list-group-item d-flex justify-content-between align-items-center py-1 border-0 inventory-row ${hiddenClass}" data-count="${count}">
+                                            <span class="small text-secondary">${resType}</span>
+                                            <div class="d-flex align-items-center">
+                                                <span class="${textClass} me-2">${count}</span>
+                                                ${alertHtml}
+                                            </div>
+                                         </li>`;
                             }
-                            
-                            html += `<li class="d-flex justify-content-between align-items-center mb-1">
-                                        <span>${type}</span>
-                                        <span>
-                                            <span class="fw-bold fs-5">${count}</span> <small class="text-muted">pcs</small>
-                                            ${alertHtml}
-                                        </span>
-                                     </li>`;
+                            html += `   </ul>
+                                     </div>`;
                         }
-                        html += `</ul></div>`;
+                        
+                        html += `   </div>
+                                </div>
+                            </div>`;
                     }
                     html += '</div>';
                 }
@@ -1892,7 +1927,23 @@ $(document).ready(function() {
                 $('#inventoryContent').fadeIn();
             }
         });
-    });    
+    });
+    
+    // 監聽 0 庫存顯示開關
+    $('#showZeroStock').change(function() {
+        var showZero = $(this).is(':checked');
+        
+        $('.inventory-row').each(function() {
+            var count = parseInt($(this).data('count'));
+            if (count === 0) {
+                if (showZero) {
+                    $(this).removeClass('d-none');
+                } else {
+                    $(this).addClass('d-none');
+                }
+            }
+        });
+    }); 
 });
 </script>
 {% endblock %}
