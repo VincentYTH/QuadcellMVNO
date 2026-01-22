@@ -7,6 +7,7 @@ import os
 from .manager import SimResourceManager
 from models.sim_resource import SimResource, db
 from flask import current_app
+from config.sim_resource import LOW_STOCK_THRESHOLD
 
 sim_resources_bp = Blueprint('sim_resources', __name__, url_prefix='/resources')
 
@@ -323,9 +324,11 @@ def confirm_assignment():
 
 @sim_resources_bp.route('/api/assign/manual', methods=['POST'])
 def manual_assignment():
-    """執行手動分配"""
+    """執行手動分配 (支持範圍或已選)"""
     data = request.json
     result = SimResourceManager.manual_assignment(
+        scope=data.get('scope'),
+        ids=data.get('ids'),
         start_imsi=data.get('start_imsi'),
         end_imsi=data.get('end_imsi'),
         customer=data.get('customer'),
@@ -333,11 +336,14 @@ def manual_assignment():
     )
     return jsonify(result)
 
-@sim_resources_bp.route('/api/assign/cancel_range', methods=['POST'])
-def cancel_assignment_range():
-    """執行批量取消分配 (Range)"""
+@sim_resources_bp.route('/api/assign/cancel', methods=['POST'])
+def cancel_assignment():
+    """執行批量取消分配 (支持範圍或已選)"""
     data = request.json
-    result = SimResourceManager.cancel_assignment_by_range(
+    # 注意：這裡改用新的 batch_cancel_assignment 方法
+    result = SimResourceManager.batch_cancel_assignment(
+        scope=data.get('scope'),
+        ids=data.get('ids'),
         start_imsi=data.get('start_imsi'),
         end_imsi=data.get('end_imsi')
     )
@@ -436,18 +442,35 @@ def export_custom_resources():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@sim_resources_bp.route('/api/delete_batch', methods=['POST'])
-def delete_batch_resources():
-    """批量刪除資源 API"""
+@sim_resources_bp.route('/api/batch/operation', methods=['POST'])
+def batch_operation():
+    """執行批量操作 (編輯/刪除)"""
     try:
         data = request.json
-        resource_ids = data.get('resource_ids', [])
+        action = data.get('action') # 'edit' 或 'delete'
+        scope = data.get('scope')   # 'selected' 或 'range'
+        ids = data.get('ids', [])
+        start_imsi = data.get('start_imsi')
+        end_imsi = data.get('end_imsi')
         
-        if not resource_ids:
-            return jsonify({'success': False, 'message': '未提供資源ID'}), 400
+        if action == 'edit':
+            update_data = data.get('data', {})
+            result = SimResourceManager.batch_update_resources(scope, ids, start_imsi, end_imsi, update_data)
+        elif action == 'delete':
+            result = SimResourceManager.batch_delete_resources(scope, ids, start_imsi, end_imsi)
+        else:
+            return jsonify({"success": False, "message": "無效的操作類型"}), 400
             
-        result = SimResourceManager.delete_batch_resources(resource_ids)
         return jsonify(result)
         
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+    
+@sim_resources_bp.route('/api/inventory_stats')
+def get_inventory_stats():
+    """獲取庫存統計 API"""
+    stats = SimResourceManager.get_inventory_stats()
+    return jsonify({
+        'stats': stats,
+        'threshold': LOW_STOCK_THRESHOLD
+    })    

@@ -454,106 +454,100 @@ class SimResourceManager:
             return {"success": False, "message": str(e)}
 
     @staticmethod
-    def manual_assignment(start_imsi, end_imsi, customer, assigned_date):
-        """手動分配：根據 IMSI 範圍"""
+    def manual_assignment(scope, ids, start_imsi, end_imsi, customer, assigned_date):
+        """手動分配：支持 按IMSI範圍 或 按已選項目"""
         try:
-            if not start_imsi.isdigit() or not end_imsi.isdigit():
-                return {"success": False, "message": "IMSI 必須為數字"}
+            # 1. 獲取查詢對象
+            query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
+            if error: return {"success": False, "message": error}
             
-            start = int(start_imsi)
-            end = int(end_imsi)
+            resources = query.all()
+            target_resources = []
             
-            if start > end:
-                return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
-            
-            count = end - start + 1
-            if count > 10000:
-                 return {"success": False, "message": "單次操作數量過大 (上限 10000)"}
+            # 2. 過濾與驗證
+            if scope == 'range':
+                # 範圍模式：嚴格數字驗證與範圍匹配
+                if not start_imsi.isdigit() or not end_imsi.isdigit():
+                    return {"success": False, "message": "IMSI 必須為純數字"}
+                s_int, e_int = int(start_imsi), int(end_imsi)
+                if s_int > e_int: return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
+                
+                # 範圍模式下的數量檢查
+                count_expected = e_int - s_int + 1
+                if count_expected > 10000: return {"success": False, "message": "單次操作數量過大 (上限 10000)"}
 
-            target_resources = SimResource.query.filter(
-                SimResource.imsi >= start_imsi,
-                SimResource.imsi <= end_imsi
-            ).all()
-            
-            if len(target_resources) == 0:
-                return {"success": False, "message": f"範圍 {start_imsi} - {end_imsi} 內找不到任何資源"}
-            
-            valid_resources = []
-            assigned_list = []
-            
+                for res in resources:
+                    if res.imsi and res.imsi.isdigit():
+                        if s_int <= int(res.imsi) <= e_int:
+                            target_resources.append(res)
+            else:
+                # 已選模式
+                target_resources = resources
+
+            if not target_resources:
+                return {"success": False, "message": "未找到符合條件的資源"}
+
+            # 3. 檢查狀態 (必須為 Available)
+            unavailable = []
             for res in target_resources:
-                if not (start <= int(res.imsi) <= end):
-                    continue
-                    
                 if res.status != 'Available':
-                    assigned_list.append(res.imsi)
-                else:
-                    valid_resources.append(res)
+                    unavailable.append(res.imsi)
             
-            if assigned_list:
-                preview = ", ".join(assigned_list[:3])
-                return {
-                    "success": False, 
-                    "message": f"範圍內有 {len(assigned_list)} 張卡已被分配或不可用。例如: {preview}..."
-                }
-            
-            for res in valid_resources:
+            if unavailable:
+                return {"success": False, "message": f"以下 IMSI 已被分配或不可用: {', '.join(unavailable[:3])}..."}
+
+            # 4. 執行分配
+            for res in target_resources:
                 res.status = 'Assigned'
                 res.customer = customer
                 res.assigned_date = assigned_date
-                
-            db.session.commit()
             
-            return {
-                "success": True, 
-                "message": f"手動分配成功！共 {len(valid_resources)} 張卡 (IMSI: {start_imsi} - {end_imsi})"
-            }
+            db.session.commit()
+            return {"success": True, "message": f"成功分配 {len(target_resources)} 張卡"}
 
         except Exception as e:
             db.session.rollback()
             return {"success": False, "message": f"系統錯誤: {str(e)}"}
 
     @staticmethod
-    def cancel_assignment_by_range(start_imsi, end_imsi):
-        """
-        批量取消分配：根據 IMSI 範圍將狀態重置為 Available
-        """
+    def batch_cancel_assignment(scope, ids, start_imsi, end_imsi):
+        """批量取消分配：支持 按IMSI範圍 或 按已選項目"""
         try:
-            # 1. 驗證輸入
-            if not start_imsi.isdigit() or not end_imsi.isdigit():
-                return {"success": False, "message": "IMSI 必須為數字"}
+            query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
+            if error: return {"success": False, "message": error}
             
-            start = int(start_imsi)
-            end = int(end_imsi)
+            resources = query.all()
+            target_resources = []
             
-            if start > end:
-                return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
+            if scope == 'range':
+                if not start_imsi.isdigit() or not end_imsi.isdigit():
+                    return {"success": False, "message": "IMSI 必須為純數字"}
+                s_int, e_int = int(start_imsi), int(end_imsi)
+                
+                for res in resources:
+                    if res.imsi and res.imsi.isdigit():
+                        if s_int <= int(res.imsi) <= e_int:
+                            target_resources.append(res)
+            else:
+                target_resources = resources
+
+            if not target_resources:
+                return {"success": False, "message": "未找到符合條件的資源"}
             
-            # 2. 查詢範圍內且狀態為 Assigned 的資源
-            target_resources = SimResource.query.filter(
-                SimResource.imsi >= start_imsi,
-                SimResource.imsi <= end_imsi,
-                SimResource.status == 'Assigned'
-            ).all()
-            
-            count = 0
+            # 只處理狀態為 Assigned 的資源
+            changed_count = 0
             for res in target_resources:
-                # 嚴格數字過濾
-                if start <= int(res.imsi) <= end:
+                if res.status == 'Assigned':
                     res.status = 'Available'
                     res.customer = None
                     res.assigned_date = None
-                    count += 1
+                    changed_count += 1
             
-            if count == 0:
-                return {"success": False, "message": f"範圍 {start_imsi} - {end_imsi} 內找不到任何已分配(Assigned)的資源"}
+            if changed_count == 0:
+                return {"success": False, "message": "選定範圍內沒有 'Assigned' 狀態的資源，無需取消。"}
 
             db.session.commit()
-            
-            return {
-                "success": True, 
-                "message": f"成功取消分配！共 {count} 張卡 (IMSI: {start_imsi} - {end_imsi}) 已重置為 Available"
-            }
+            return {"success": True, "message": f"成功取消分配 {changed_count} 張卡"}
 
         except Exception as e:
             db.session.rollback()
@@ -592,4 +586,170 @@ class SimResourceManager:
             }
         except Exception as e:
             db.session.rollback()
-            return {"success": False, "message": f"刪除失敗: {str(e)}"}    
+            return {"success": False, "message": f"刪除失敗: {str(e)}"}
+        
+    @staticmethod
+    def _get_batch_targets(scope, ids=None, start_imsi=None, end_imsi=None):
+        """批量操作輔助方法：獲取目標資源查詢對象"""
+        if scope == 'selected':
+            if not ids:
+                return None, "未選擇任何項目"
+            return SimResource.query.filter(SimResource.id.in_(ids)), None
+            
+        elif scope == 'range':
+            if not start_imsi or not end_imsi:
+                return None, "請輸入起始和結束 IMSI"
+            
+            # 初步使用字串比較過濾 (利用 SQL 索引)
+            query = SimResource.query.filter(
+                SimResource.imsi >= start_imsi,
+                SimResource.imsi <= end_imsi
+            )
+            return query, None
+            
+        return None, "無效的操作範圍"
+
+    @staticmethod
+    def batch_update_resources(scope, ids, start_imsi, end_imsi, update_data):
+        """批量更新資源 (Provider, CardType, ResourcesType, Batch, ReceivedDate)"""
+        try:
+            query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
+            if error: return {"success": False, "message": error}
+            
+            resources = query.all()
+            target_ids = []
+            
+            # 如果是範圍模式，進行二次嚴格數字驗證
+            if scope == 'range':
+                if not start_imsi.isdigit() or not end_imsi.isdigit():
+                    return {"success": False, "message": "IMSI 必須為純數字"}
+                    
+                s_int, e_int = int(start_imsi), int(end_imsi)
+                for res in resources:
+                    if res.imsi and res.imsi.isdigit():
+                        imsi_int = int(res.imsi)
+                        if s_int <= imsi_int <= e_int:
+                            target_ids.append(res.id)
+            else:
+                target_ids = [r.id for r in resources]
+            
+            if not target_ids:
+                return {"success": False, "message": "未找到符合條件的資源"}
+
+            # 構建更新字典，過濾掉空值
+            fields_to_update = {}
+            allowed_fields = {
+                'Provider': 'supplier',
+                'CardType': 'type',
+                'ResourcesType': 'resources_type',
+                'Batch': 'batch',
+                'ReceivedDate': 'received_date'
+            }
+            
+            for key, db_col in allowed_fields.items():
+                if update_data.get(key):
+                    fields_to_update[db_col] = update_data[key].strip()
+            
+            if not fields_to_update:
+                return {"success": False, "message": "未輸入任何需要更新的欄位"}
+
+            # 批量更新
+            updated_count = SimResource.query.filter(SimResource.id.in_(target_ids)).update(fields_to_update, synchronize_session=False)
+            db.session.commit()
+            
+            return {"success": True, "message": f"成功更新 {updated_count} 筆資源"}
+
+        except Exception as e:
+            db.session.rollback()
+            return {"success": False, "message": f"更新失敗: {str(e)}"}
+
+    @staticmethod
+    def batch_delete_resources(scope, ids, start_imsi, end_imsi):
+        """批量刪除資源"""
+        try:
+            query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
+            if error: return {"success": False, "message": error}
+            
+            # 確定要刪除的 ID 列表
+            target_ids = []
+            
+            if scope == 'range':
+                if not start_imsi.isdigit() or not end_imsi.isdigit():
+                    return {"success": False, "message": "IMSI 必須為純數字"}
+                
+                s_int = int(start_imsi)
+                e_int = int(end_imsi)
+                
+                if s_int > e_int:
+                    return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
+                
+                # 計算該段落應有的總數量
+                expected_count = e_int - s_int + 1
+                
+                # 為了安全，設置一個上限（例如一次最多刪除 10000 條，防止誤操作過大範圍）
+                if expected_count > 10000:
+                    return {"success": False, "message": f"單次操作範圍過大 ({expected_count} 條)，請縮小範圍 (上限 10000)"}
+
+                # 獲取初步篩選的資源 (String 比較)
+                resources = query.all()
+                
+                # 在 Python 中進行嚴格的數字過濾，並統計實際存在的唯一 IMSI
+                found_imsis = set()
+                target_ids = []
+                
+                for res in resources:
+                    if res.imsi and res.imsi.isdigit():
+                        imsi_int = int(res.imsi)
+                        # 嚴格確認在數字範圍內
+                        if s_int <= imsi_int <= e_int:
+                            target_ids.append(res.id)
+                            found_imsis.add(imsi_int)
+                
+                # 核心檢查邏輯：實際找到的唯一 IMSI 數量必須等於範圍長度
+                if len(found_imsis) < expected_count:
+                    missing_count = expected_count - len(found_imsis)
+                    return {
+                        "success": False, 
+                        "message": f"驗證失敗：無法執行刪除。\n\n您選擇的段落 ({start_imsi} - {end_imsi}) 共有 {expected_count} 個號碼，但數據庫中只找到了 {len(found_imsis)} 個。\n\n缺失 {missing_count} 個號碼。請確保該段落內的所有 IMSI 都存在。"
+                    }
+                    
+            else:
+                # 'selected' 模式 (按勾選項目)
+                resources = query.all()
+                target_ids = [r.id for r in resources]
+
+            if not target_ids:
+                return {"success": False, "message": "未找到符合條件的資源"}
+            
+            # 執行刪除
+            deleted_count = SimResource.query.filter(SimResource.id.in_(target_ids)).delete(synchronize_session=False)
+            db.session.commit()
+            
+            return {"success": True, "message": f"成功刪除 {deleted_count} 筆資源"}
+            
+        except Exception as e:
+            db.session.rollback()
+            return {"success": False, "message": f"刪除失敗: {str(e)}"}     
+        
+    @staticmethod
+    def get_inventory_stats():
+        """獲取庫存統計數據 (僅統計 Available 狀態)"""
+        from sqlalchemy import func
+        
+        inventory_counts = db.session.query(
+            SimResource.supplier,
+            SimResource.type,
+            func.count(SimResource.id)
+        ).filter(
+            SimResource.status == 'Available'
+        ).group_by(SimResource.supplier, SimResource.type).all()
+        
+        inventory_data = {}
+        for supplier, card_type, count in inventory_counts:
+            if not supplier: supplier = "Unknown"
+            if supplier not in inventory_data:
+                inventory_data[supplier] = {}
+            inventory_data[supplier][card_type] = count
+            
+        # 按供應商名稱排序
+        return dict(sorted(inventory_data.items()))           
