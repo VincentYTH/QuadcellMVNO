@@ -1862,6 +1862,8 @@ $(document).ready(function() {
                     html += '<div class="accordion" id="inventoryAccordion">';
                     
                     var supplierIndex = 0;
+                    var uniqueIdCounter = 0; // 用於生成唯一的 ID
+
                     for (var supplier in stats) {
                         supplierIndex++;
                         html += `
@@ -1884,7 +1886,11 @@ $(document).ready(function() {
                             // 遍歷 ResourcesType
                             var resTypes = cardTypes[cardType];
                             for (var resType in resTypes) {
-                                var count = resTypes[resType];
+                                uniqueIdCounter++;
+                                var dataObj = resTypes[resType];
+                                var count = dataObj.total; // 現在是一個對象，需取 .total
+                                var batches = dataObj.batches || [];
+                                
                                 var alertHtml = '';
                                 
                                 // 狀態標籤
@@ -1898,16 +1904,42 @@ $(document).ready(function() {
                                 var hiddenClass = (count === 0 && !showZero) ? 'd-none' : '';
                                 var textClass = count > 0 ? 'text-dark fw-bold' : 'text-muted';
                                 
-                                html += `<li class="list-group-item d-flex justify-content-between align-items-center py-1 border-0 inventory-row ${hiddenClass}" data-count="${count}">
-                                            <span class="small text-secondary">${resType}</span>
-                                            <div class="d-flex align-items-center">
-                                                <span class="${textClass} me-2">${count}</span>
-                                                ${alertHtml}
+                                // 構建 Batch 詳細列表 HTML
+                                var batchDetailsHtml = '';
+                                if (batches.length > 0) {
+                                    batchDetailsHtml = `<div class="collapse mt-2 ps-3 border-start border-2 border-light" id="batches-${uniqueIdCounter}">`;
+                                    batches.forEach(function(b) {
+                                        batchDetailsHtml += `
+                                            <div class="d-flex justify-content-between align-items-center py-1 text-muted small">
+                                                <span><i class="bi bi-box-seam me-1"></i> ${b.batch} <span class="text-secondary ms-1">(${b.received_date})</span></span>
+                                                <span class="font-monospace">${b.count}</span>
+                                            </div>`;
+                                    });
+                                    batchDetailsHtml += `</div>`;
+                                }
+
+                                // 構建主行 HTML
+                                var toggleIcon = batches.length > 0 ? 
+                                    `<a class="text-decoration-none text-secondary me-2" data-bs-toggle="collapse" href="#batches-${uniqueIdCounter}" role="button">
+                                        <i class="bi bi-chevron-down"></i>
+                                    </a>` : '';
+
+                                html += `<li class="list-group-item py-2 border-0 inventory-row ${hiddenClass}" data-count="${count}">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div class="d-flex align-items-center">
+                                                    ${toggleIcon}
+                                                    <span class="small text-secondary fw-bold">${resType}</span>
+                                                </div>
+                                                <div class="d-flex align-items-center">
+                                                    <span class="${textClass} me-2 fs-6">${count}</span>
+                                                    ${alertHtml}
+                                                </div>
                                             </div>
-                                         </li>`;
+                                            ${batchDetailsHtml}
+                                        </li>`;
                             }
                             html += `   </ul>
-                                     </div>`;
+                                    </div>`;
                         }
                         
                         html += `   </div>

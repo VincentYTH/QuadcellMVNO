@@ -733,11 +733,10 @@ class SimResourceManager:
         
     @staticmethod
     def get_inventory_stats():
-        """獲取庫存統計數據 (統計 Available 狀態，並包含 0 庫存的已知類別)"""
+        """獲取庫存統計數據 (統計 Available 狀態，並包含 0 庫存的已知類別，增加 Batch 細節)"""
         from sqlalchemy import func
         
         # 1. 獲取所有已知的分類組合 (Provider, CardType, ResourcesType)
-        # 這確保即使某個類別當前沒有可用庫存，也能顯示出來 (計為 0)
         all_combinations = db.session.query(
             SimResource.supplier,
             SimResource.type,
@@ -745,43 +744,66 @@ class SimResourceManager:
         ).distinct().all()
         
         # 初始化數據結構
+        # 結構: { supplier: { card_type: { res_type: { 'total': 0, 'batches': [] } } } }
         inventory_data = {}
         for supplier, card_type, res_type in all_combinations:
             if not supplier: supplier = "Unknown"
-            if not res_type: res_type = "N/A" # 處理空值
+            if not res_type: res_type = "N/A" 
             
             if supplier not in inventory_data:
                 inventory_data[supplier] = {}
             if card_type not in inventory_data[supplier]:
                 inventory_data[supplier][card_type] = {}
             
-            # 初始化為 0
-            inventory_data[supplier][card_type][res_type] = 0
+            # 初始化 total 為 0，batches 為空列表
+            inventory_data[supplier][card_type][res_type] = {
+                'total': 0,
+                'batches': []
+            }
 
-        # 2. 獲取實際可用庫存數量
+        # 2. 獲取實際可用庫存數量，增加 Batch 和 ReceivedDate 分組
         inventory_counts = db.session.query(
             SimResource.supplier,
             SimResource.type,
             SimResource.resources_type,
+            SimResource.batch,
+            SimResource.received_date,
             func.count(SimResource.id)
         ).filter(
             SimResource.status == 'Available'
         ).group_by(
             SimResource.supplier, 
             SimResource.type, 
-            SimResource.resources_type
+            SimResource.resources_type,
+            SimResource.batch,
+            SimResource.received_date
+        ).order_by(
+            SimResource.received_date.desc(), # 讓日期較新的排前面
+            SimResource.batch.desc()
         ).all()
         
-        # 3. 填入實際數量
-        for supplier, card_type, res_type, count in inventory_counts:
+        # 3. 填入實際數量和 Batch 細節
+        for supplier, card_type, res_type, batch, rec_date, count in inventory_counts:
             if not supplier: supplier = "Unknown"
             if not res_type: res_type = "N/A"
+            if not batch: batch = "Unknown"
+            if not rec_date: rec_date = "-"
             
-            # 確保鍵存在 (防止有新的 Available 數據但不在 distinct 查詢中，雖不常見但保險)
+            # 確保鍵存在
             if supplier not in inventory_data: inventory_data[supplier] = {}
             if card_type not in inventory_data[supplier]: inventory_data[supplier][card_type] = {}
+            if res_type not in inventory_data[supplier][card_type]:
+                inventory_data[supplier][card_type][res_type] = {'total': 0, 'batches': []}
             
-            inventory_data[supplier][card_type][res_type] = count
+            # 累加總數
+            inventory_data[supplier][card_type][res_type]['total'] += count
+            
+            # 添加 Batch 細節
+            inventory_data[supplier][card_type][res_type]['batches'].append({
+                'batch': batch,
+                'received_date': rec_date,
+                'count': count
+            })
             
         # 4. 排序：Supplier -> CardType -> ResourcesType
         sorted_data = {}
@@ -790,4 +812,4 @@ class SimResourceManager:
             for card_type in sorted(inventory_data[supplier].keys()):
                 sorted_data[supplier][card_type] = dict(sorted(inventory_data[supplier][card_type].items()))
                 
-        return sorted_data        
+        return sorted_data
