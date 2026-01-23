@@ -1,0 +1,10 @@
+Flask
+Flask-Cors
+Flask-SQLAlchemy
+requests
+pandas
+openpyxl
+pycryptodome
+tqdm
+psycopg2-binary
+urllib3
