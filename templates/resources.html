@@ -1586,6 +1586,86 @@ $(document).ready(function() {
         executeBatchOperation('delete');
     });
 
+    // [新增] 加載導出過濾器的函數
+    function loadExportFilterOptions() {
+        // 獲取當前 URL 上的搜索參數
+        var searchParams = {};
+        var urlParams = new URLSearchParams(window.location.search);
+        for(var pair of urlParams.entries()) {
+           searchParams[pair[0]] = pair[1]; 
+        }
+        
+        // 顯示加載狀態
+        var $custSelect = $('#exportCustomer');
+        var $dateSelect = $('#exportAssignDate');
+        $custSelect.html('<option>Loading...</option>').prop('disabled', true);
+        $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
+        
+        $.ajax({
+            url: '/resources/api/export/options',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(searchParams),
+            success: function(res) {
+                // 重建 Customer 下拉
+                $custSelect.empty().append('<option value="ALL">ALL</option>');
+                res.customers.forEach(function(c) {
+                    $custSelect.append(`<option value="${c}">${c}</option>`);
+                });
+                
+                // 重建 Date 下拉
+                $dateSelect.empty().append('<option value="ALL">ALL</option>');
+                res.assigned_dates.forEach(function(d) {
+                    $dateSelect.append(`<option value="${d}">${d}</option>`);
+                });
+                
+                $custSelect.prop('disabled', false);
+                $dateSelect.prop('disabled', false);
+            },
+            error: function() {
+                $custSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
+                $dateSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
+            }
+        });
+    }
+
+    // [修改] 監聽導出範圍切換
+    $('input[name="exportScope"]').change(function() {
+        var scope = $(this).val();
+        var $filterDiv = $('#exportCustomer').closest('.mb-3'); // 獲取包含篩選器的容器
+        
+        if (scope === 'search') {
+            // 切換到搜索結果模式：啟用篩選器並加載選項
+            $('#exportCustomer, #exportAssignDate').prop('disabled', false);
+            // 加載針對當前搜索結果的選項
+            loadExportFilterOptions();
+            // 視覺上恢復正常
+            $filterDiv.removeClass('opacity-50');
+        } else {
+            // 切換到已選模式：禁用篩選器 (因為是對特定ID導出，再篩選意義不大且邏輯複雜)
+            $('#exportCustomer, #exportAssignDate').prop('disabled', true).val('ALL');
+            // 視覺上變灰
+            $filterDiv.addClass('opacity-50');
+        }
+        
+        // 重置選中狀態 (如果切換模式，最好重置一下自動勾選)
+        $('.column-item[data-col="Customer"] .col-checkbox').prop('checked', false);
+        $('.column-item[data-col="Assign Date"] .col-checkbox').prop('checked', false);
+        updateSelectAllColumnsState();
+    });
+
+    // [新增] 監聽導出 Modal 打開事件
+    $('#exportModal').on('show.bs.modal', function() {
+        // 如果當前是 'search' 模式，則加載選項
+        if ($('#scopeSearch').is(':checked')) {
+            loadExportFilterOptions();
+        } else {
+             // 如果是 selected 模式，確保禁用狀態正確
+             $('#exportCustomer, #exportAssignDate').prop('disabled', true);
+             $('#exportCustomer').closest('.mb-3').addClass('opacity-50');
+        }
+    });
+
     // --- 導出模態框邏輯 ---
     // (導出相關的代碼保持不變，因為它們不涉及這些修改)
     // 初始化欄位列表

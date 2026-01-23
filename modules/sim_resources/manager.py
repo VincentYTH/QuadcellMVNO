@@ -163,6 +163,29 @@ class SimResourceManager:
             }
     
     @staticmethod
+    def get_distinct_filters(params):
+        """獲取當前搜索條件下的唯一 Customer 和 Assigned Date"""
+        query = SimResource.query
+        
+        # 重用現有的搜索過濾邏輯
+        query = SimResourceManager._apply_search_filters(query, params)
+        
+        # 獲取 Customer 清單 (排除空值)
+        customers = query.with_entities(SimResource.customer)\
+            .filter(SimResource.customer != None, SimResource.customer != '')\
+            .distinct().order_by(SimResource.customer).all()
+        
+        # 獲取 Assigned Date 清單 (排除空值，倒序)
+        dates = query.with_entities(SimResource.assigned_date)\
+            .filter(SimResource.assigned_date != None, SimResource.assigned_date != '')\
+            .distinct().order_by(SimResource.assigned_date.desc()).all()
+            
+        return {
+            'customers': [c[0] for c in customers],
+            'assigned_dates': [d[0] for d in dates]
+        }
+    
+    @staticmethod
     def get_resources_for_export(scope, selected_ids=None, search_params=None, extra_filters=None):
         """
         獲取導出數據

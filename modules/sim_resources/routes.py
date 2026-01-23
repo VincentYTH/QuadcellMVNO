@@ -109,6 +109,17 @@ def delete_resource(resource_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+# 獲取導出的動態篩選選項
+@sim_resources_bp.route('/api/export/options', methods=['POST'])
+def get_export_filter_options():
+    try:
+        # 從前端接收當前的搜索參數
+        search_params = request.json
+        options = SimResourceManager.get_distinct_filters(search_params)
+        return jsonify(options)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # 导出CSV
 @sim_resources_bp.route('/api/export')
 def export_resources():
@@ -395,6 +406,11 @@ def export_custom_resources():
             search_params=search_params,
             extra_filters=extra_filters
         )
+        
+        # 檢查 columns 中是否包含 'IMSI' (對應 field_mapping 中的 imsi) -> asc
+        if 'IMSI' in selected_columns:
+            # 使用 Python 排序，處理 None 值
+            resources.sort(key=lambda x: str(x.imsi) if x.imsi else '')
         
         # 欄位映射 (DB Model屬性 -> 導出標題)
         field_mapping = {
