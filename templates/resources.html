@@ -1017,7 +1017,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
                     <span class="text-muted small"><i class="bi bi-info-circle"></i> 僅統計狀態為 Available 的資源</span>
                     <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="showZeroStock" checked>
+                        <input class="form-check-input" type="checkbox" id="showZeroStock">
                         <label class="form-check-label small fw-bold" for="showZeroStock">顯示 0 庫存項目</label>
                     </div>
                 </div>
@@ -1841,12 +1841,16 @@ $('#saveResourceBtn').click(function() {
     });
     
     $('#submitImportBtn').click(function() {
-        // ... (保持原有的導入邏輯)
         const formData = new FormData($('#importForm')[0]);
         const btn = $(this);
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 導入中...');
+        
+        // 重置顯示狀態
         $('#importResult').hide();
         $('#importDetails').hide();
+        $('#successMessage').hide();
+        $('#errorMessage').hide();
+        $('#warningMessage').hide();
         
         $.ajax({
             url: '/resources/api/import',
@@ -1859,26 +1863,45 @@ $('#saveResourceBtn').click(function() {
                 if (res.success) {
                     $('#successMessage').show().text(res.message);
                     $('#errorMessage').hide();
+                    
+                    // 如果有重複或錯誤，顯示詳情
                     if (res.duplicate_count > 0 || res.error_count > 0) {
                         $('#importDetails').show();
+                        
+                        // 構建重複清單 HTML
                         if (res.duplicates && res.duplicates.length > 0) {
-                            let dupHtml = '<div class="alert alert-warning"><strong>重複項目 (前50筆):</strong><ul class="mb-0 small">';
+                            let dupHtml = '<div class="alert alert-warning"><strong>重複項目 (前50筆) - 已跳過:</strong><ul class="mb-0 small">';
                             res.duplicates.forEach(d => {
                                 dupHtml += `<li>行 ${d.row}: IMSI=${d.IMSI}, ICCID=${d.ICCID} (${d.reason})</li>`;
                             });
                             dupHtml += '</ul></div>';
                             $('#duplicateList').html(dupHtml);
+                        } else {
+                            $('#duplicateList').empty();
                         }
+                        
+                        // 構建錯誤清單 HTML
                         if (res.errors && res.errors.length > 0) {
-                            let errHtml = '<div class="alert alert-danger"><strong>格式錯誤 (前50筆):</strong><ul class="mb-0 small">';
+                            let errHtml = '<div class="alert alert-danger"><strong>格式錯誤 (前50筆) - 未匯入:</strong><ul class="mb-0 small">';
                             res.errors.forEach(e => {
                                 errHtml += `<li>${e}</li>`;
                             });
                             errHtml += '</ul></div>';
                             $('#errorList').html(errHtml);
+                        } else {
+                            $('#errorList').empty();
                         }
+                        
+                        // [修改點] 即使有部分錯誤，也彈窗提示總體結果
+                        alert(res.message + "\n(請查看下方詳細列表)");
+                        
+                        // 這裡可以選擇不自動刷新，讓用戶看清楚錯誤信息，或者設置較長的延遲
+                        // setTimeout(() => location.reload(), 3000); 
+                        
                     } else {
-                        setTimeout(() => location.reload(), 1500);
+                        // [修改點] 完全成功時，直接彈窗提示，用戶點擊確定後再刷新
+                        alert(res.message);
+                        location.reload();
                     }
                 }
             },
@@ -1887,6 +1910,9 @@ $('#saveResourceBtn').click(function() {
                 $('#successMessage').hide();
                 const msg = err.responseJSON ? err.responseJSON.error : '上傳失敗';
                 $('#errorMessage').show().text(msg);
+                
+                // [修改點] 錯誤時也彈窗
+                alert('導入失敗: ' + msg);
             },
             complete: function() {
                 btn.prop('disabled', false).text('{{ _("import") }}');
@@ -1894,7 +1920,7 @@ $('#saveResourceBtn').click(function() {
         });
     });
 
-    // --- 庫存概覽功能 ---
+// --- 庫存概覽功能 ---
     $('#inventoryModal').on('show.bs.modal', function () {
         // 顯示 Loading，隱藏內容
         $('#inventoryLoading').show();
@@ -1953,7 +1979,7 @@ $('#saveResourceBtn').click(function() {
                                     alertHtml = `<span class="badge bg-danger">低庫存</span>`;
                                 }
                                 
-                                // 根據數量和開關決定是否顯示
+                                // 根據數量和開關決定是否顯示 (主行)
                                 var hiddenClass = (count === 0 && !showZero) ? 'd-none' : '';
                                 var textClass = count > 0 ? 'text-dark fw-bold' : 'text-muted';
                                 
@@ -1962,10 +1988,15 @@ $('#saveResourceBtn').click(function() {
                                 if (batches.length > 0) {
                                     batchDetailsHtml = `<div class="collapse mt-2 ps-3 border-start border-2 border-light" id="batches-${uniqueIdCounter}">`;
                                     batches.forEach(function(b) {
+                                        // [修改] 針對 Batch 行的顯示邏輯
+                                        var batchHiddenClass = (b.count === 0 && !showZero) ? 'd-none' : '';
+                                        var batchTextClass = b.count > 0 ? '' : 'text-danger'; // 0 庫存用紅色標示
+
+                                        // [修改] 添加 batch-row 類別，方便統一控制
                                         batchDetailsHtml += `
-                                            <div class="d-flex justify-content-between align-items-center py-1 text-muted small">
+                                            <div class="d-flex justify-content-between align-items-center py-1 text-muted small batch-row ${batchHiddenClass}" data-count="${b.count}">
                                                 <span><i class="bi bi-box-seam me-1"></i> ${b.batch} <span class="text-secondary ms-1">(${b.received_date})</span></span>
-                                                <span class="font-monospace">${b.count}</span>
+                                                <span class="font-monospace ${batchTextClass}">${b.count}</span>
                                             </div>`;
                                     });
                                     batchDetailsHtml += `</div>`;
@@ -2018,7 +2049,8 @@ $('#saveResourceBtn').click(function() {
     $('#showZeroStock').change(function() {
         var showZero = $(this).is(':checked');
         
-        $('.inventory-row').each(function() {
+        // [修改] 同時控制主行 (inventory-row) 和 Batch 行 (batch-row)
+        $('.inventory-row, .batch-row').each(function() {
             var count = parseInt($(this).data('count'));
             if (count === 0) {
                 if (showZero) {
