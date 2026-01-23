@@ -1,13 +1,13 @@
 # 预设选项数据
-PROVIDER_OPTIONS = ['Quadcell', 'Montnet']
+PROVIDER_OPTIONS = ['CUHK', 'CHKT', 'CTG', 'Montnet']
 
 CARD_TYPE_OPTIONS = ['Physical SIM', 'eSIM', 'Soft Profile']
 
 # 根据供应商预设资源类型选项
-RESOURCES_TYPE_OPTIONS = {'MNT002', 'MNT001', 'MNT000'}
+RESOURCES_TYPE_OPTIONS = {'45407', '45400', '45431', '45412_C', '45412_H'}
 
 # 数据库配置
-SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:123456@localhost:5432/sim_management_db'
+SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:123456@192.168.1.104:5432/sim_management_db'
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 # 应用配置
