@@ -30,6 +30,8 @@ class SimResource(db.Model):
     customer = db.Column(db.String(100), nullable=True)
     # 分配日期 (格式 YYYY-MM-DD)
     assigned_date = db.Column(db.String(20), nullable=True)
+    # 備注
+    remark = db.Column(db.String(255), nullable=True)
     # ================
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -52,6 +54,7 @@ class SimResource(db.Model):
             'status': self.status,
             'customer': self.customer,
             'assigned_date': self.assigned_date,
+            'remark': self.remark,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

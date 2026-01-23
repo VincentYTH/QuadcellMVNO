@@ -42,7 +42,7 @@ ngrok_process = None
 public_url = None
 
 # 配置数据库
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:123456@localhost:5432/sim_management_db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:123456@192.168.1.104:5432/sim_management_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)

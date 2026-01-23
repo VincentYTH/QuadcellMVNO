@@ -55,6 +55,9 @@ class SimResourceManager:
         if params.get('customer'):
             query = query.filter(SimResource.customer.ilike(f'%{params["customer"]}%')) # 模糊匹配
             
+        if params.get('remark'):
+            query = query.filter(SimResource.remark.ilike(f'%{params["remark"]}%'))    
+            
         # 3. 分配日期範圍搜尋
         start_date = params.get('assigned_date_start')
         end_date = params.get('assigned_date_end')
@@ -258,7 +261,8 @@ class SimResourceManager:
             puk2=data.get('PUK2', '').strip() or None,
             status=status,
             customer=customer,
-            assigned_date=data.get('Assign Date', '').strip() or None            
+            assigned_date=data.get('Assign Date', '').strip() or None,
+            remark=data.get('Remark', '').strip() or None         
         )
         
         db.session.add(resource)
@@ -294,7 +298,10 @@ class SimResourceManager:
             # if customer: resource.status = 'Assigned'
             
         if 'Assign Date' in data:
-            resource.assigned_date = data.get('Assign Date', '').strip() or None        
+            resource.assigned_date = data.get('Assign Date', '').strip() or None   
+            
+        if 'Remark' in data:
+            resource.remark = data.get('Remark', '').strip() or None     
         
         db.session.commit()
         return resource
@@ -408,7 +415,7 @@ class SimResourceManager:
         }
 
     @staticmethod
-    def confirm_assignment(plan, customer, assigned_date, provider, card_type, resources_type):
+    def confirm_assignment(plan, customer, assigned_date, provider, card_type, resources_type, remark=None):
         """執行分配"""
         total_assigned = 0
         assigned_ranges = []
@@ -438,6 +445,9 @@ class SimResourceManager:
                     res.status = 'Assigned'
                     res.customer = customer
                     res.assigned_date = assigned_date
+                    # 如果提供了 remark 則更新
+                    if remark is not None and str(remark).strip():
+                        res.remark = str(remark).strip()
                 
                 total_assigned += len(resources_to_update)
                 assigned_ranges.append(f"{batch_name}: {first_imsi} ~ {last_imsi} ({len(resources_to_update)} pcs)")
@@ -454,7 +464,7 @@ class SimResourceManager:
             return {"success": False, "message": str(e)}
 
     @staticmethod
-    def manual_assignment(scope, ids, start_imsi, end_imsi, customer, assigned_date):
+    def manual_assignment(scope, ids, start_imsi, end_imsi, customer, assigned_date, remark=None):
         """手動分配：支持 按IMSI範圍 或 按已選項目"""
         try:
             # 1. 獲取查詢對象
@@ -501,6 +511,9 @@ class SimResourceManager:
                 res.status = 'Assigned'
                 res.customer = customer
                 res.assigned_date = assigned_date
+                # 如果提供了 remark 則更新
+                if remark is not None and str(remark).strip():
+                    res.remark = str(remark).strip()
             
             db.session.commit()
             return {"success": True, "message": f"成功分配 {len(target_resources)} 張卡"}
@@ -510,7 +523,7 @@ class SimResourceManager:
             return {"success": False, "message": f"系統錯誤: {str(e)}"}
 
     @staticmethod
-    def batch_cancel_assignment(scope, ids, start_imsi, end_imsi):
+    def batch_cancel_assignment(scope, ids, start_imsi, end_imsi, remark=None):
         """批量取消分配：支持 按IMSI範圍 或 按已選項目"""
         try:
             query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
@@ -541,6 +554,9 @@ class SimResourceManager:
                     res.status = 'Available'
                     res.customer = None
                     res.assigned_date = None
+                    # 如果用戶在 Cancel 時輸入了 Remark，則更新它
+                    if remark is not None and str(remark).strip():
+                        res.remark = str(remark).strip()
                     changed_count += 1
             
             if changed_count == 0:
@@ -643,7 +659,8 @@ class SimResourceManager:
                 'CardType': 'type',
                 'ResourcesType': 'resources_type',
                 'Batch': 'batch',
-                'ReceivedDate': 'received_date'
+                'ReceivedDate': 'received_date',
+                'Remark': 'remark'
             }
             
             for key, db_col in allowed_fields.items():

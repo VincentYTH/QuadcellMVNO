@@ -33,6 +33,7 @@ def resources_page():
         'customer': request.args.get('customer', '').strip(),
         'assigned_date_start': request.args.get('assigned_date_start', '').strip(),
         'assigned_date_end': request.args.get('assigned_date_end', '').strip(),
+        'remark': request.args.get('remark', '').strip(),
         
         'sort': request.args.get('sort', 'updated_at'),
         'order': request.args.get('order', 'desc'),
@@ -136,7 +137,8 @@ def export_resources():
                 'pin1': res.pin1,
                 'puk1': res.puk1,
                 'pin2': res.pin2,
-                'puk2': res.puk2
+                'puk2': res.puk2,
+                'remark': res.remark
             })
             output.append(row)
         
@@ -242,6 +244,9 @@ def import_resources():
             # 處理日期，優先讀取 'Assign Date'，其次 'AssignDate'
             assign_date = data.get('Assign Date') or data.get('AssignDate') or data.get('AssignedDate')
             
+            # 讀取 Remark
+            remark = data.get('Remark')
+            
             status = 'Available'
             if customer: # 如果有客戶資訊，則標記為 Assigned
                 status = 'Assigned'
@@ -264,10 +269,10 @@ def import_resources():
                 puk1=data.get('PUK1') or None,
                 pin2=data.get('PIN2') or None,
                 puk2=data.get('PUK2') or None,
-                # 新增欄位
                 status=status,
                 customer=customer,
-                assigned_date=assign_date
+                assigned_date=assign_date,
+                remark=remark
             )
             
             db.session.add(new_resource)
@@ -316,6 +321,7 @@ def confirm_assignment():
         plan=data.get('batches'),
         customer=data.get('customer'),
         assigned_date=data.get('assigned_date'),
+        remark=data.get('remark'),
         provider=data.get('provider'),
         card_type=data.get('card_type'),
         resources_type=data.get('resources_type')
@@ -332,7 +338,8 @@ def manual_assignment():
         start_imsi=data.get('start_imsi'),
         end_imsi=data.get('end_imsi'),
         customer=data.get('customer'),
-        assigned_date=data.get('assigned_date')
+        assigned_date=data.get('assigned_date'),
+        remark=data.get('remark')
     )
     return jsonify(result)
 
@@ -345,7 +352,8 @@ def cancel_assignment():
         scope=data.get('scope'),
         ids=data.get('ids'),
         start_imsi=data.get('start_imsi'),
-        end_imsi=data.get('end_imsi')
+        end_imsi=data.get('end_imsi'),
+        remark=data.get('remark')
     )
     return jsonify(result)
 
@@ -381,7 +389,8 @@ def export_custom_resources():
             'iccid': 'ICCID',
             'msisdn': 'MSISDN',
             'customer': 'Customer',
-            'assigned_date': 'Assign Date',                        
+            'assigned_date': 'Assign Date',
+            'remark': 'Remark',                        
             'supplier': 'Provider',
             'type': 'CardType',
             'resources_type': 'ResourcesType',
