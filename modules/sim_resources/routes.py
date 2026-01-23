@@ -166,13 +166,17 @@ def import_resources():
         if not file.filename.lower().endswith(('.xlsx', '.xls')):
             return jsonify({'error': '僅支援 Excel 檔案 (.xlsx 或 .xls)'}), 400
 
-        df = pd.read_excel(file, sheet_name=0)
+        # [修改] 使用 dtype=str 強制所有數據讀取為字符串，防止 '0031' 變成 31.0
+        # keep_default_na=False 會將空單元格讀取為空字符串 '' 而不是 NaN，這樣處理更方便
+        df = pd.read_excel(file, sheet_name=0, dtype=str, keep_default_na=False)
         
         if df.empty:
             return jsonify({'error': '第一張 Sheet 為空'}), 400
         
+        # 處理 Excel 標題前後可能的空格 (例如 'PIN2 ' -> 'PIN2')
+        df.columns = df.columns.str.strip()
+        
         required_columns = ['Provider', 'CardType', 'ResourcesType', 'Batch', 'ReceivedDate', 'IMSI', 'ICCID', 'MSISDN']
-        # 注意：Customer 和 Assign Date (或 AssignDate) 是可選的
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
             return jsonify({'error': f'缺少必填欄位: {", ".join(missing_cols)}'}), 400
@@ -186,19 +190,29 @@ def import_resources():
         existing_imsi = {r.imsi for r in existing if r.imsi}
         existing_iccid = {r.iccid for r in existing if r.iccid}
         
+        # 定義日期清洗函數
+        def clean_date_str(val):
+            if not val or val.lower() == 'nan':
+                return None
+            # 如果是 "2025-03-31 00:00:00" 這種格式，只取空格前的部分
+            val = val.strip()
+            if ' ' in val:
+                val = val.split(' ')[0]
+            return val
+
         for idx, row in df.iterrows():
             row_num = idx + 2
             
-            missing_required = [col for col in required_columns if pd.isna(row[col]) or str(row[col]).strip() == '']
+            missing_required = [col for col in required_columns if str(row.get(col, '')).strip() == '']
             if missing_required:
                 error_rows.append(f"第 {row_num} 行：缺少必填欄位 {', '.join(missing_required)}")
                 continue
             
+            # 構建數據字典，去除內容前後空格
             data = {}
             for col in df.columns:
                 val = row[col]
-                if pd.notna(val):
-                    data[col] = str(val).strip()
+                data[col] = str(val).strip()
             
             card_type = data.get('CardType', '')
             
@@ -237,28 +251,27 @@ def import_resources():
                 })
                 continue
             
-            # --- 新增邏輯：處理 Customer 和 Assign Date ---
-            # 嘗試讀取多種可能的列名
             customer = data.get('Customer')
             
-            # 處理日期，優先讀取 'Assign Date'，其次 'AssignDate'
-            assign_date = data.get('Assign Date') or data.get('AssignDate') or data.get('AssignedDate')
+            # 處理日期格式，確保去掉時間部分
+            raw_assign_date = data.get('Assign Date') or data.get('AssignDate') or data.get('AssignedDate')
+            assign_date = clean_date_str(raw_assign_date)
             
-            # 讀取 Remark
+            raw_received_date = data.get('ReceivedDate')
+            received_date = clean_date_str(raw_received_date)
+
             remark = data.get('Remark')
             
             status = 'Available'
-            if customer: # 如果有客戶資訊，則標記為 Assigned
+            if customer: 
                 status = 'Assigned'
-                # 如果沒有日期，默認為今天，或者是 ReceivedDate? 通常導入歷史數據應該有日期
-                # 如果 Excel 沒填，這裡先留空或設為當前日期視需求而定，這裡設為 None
             
             new_resource = SimResource(
                 type=card_type,
                 supplier=data['Provider'],
                 resources_type=data.get('ResourcesType'),
                 batch=data.get('Batch'),
-                received_date=data.get('ReceivedDate'),
+                received_date=received_date,
                 imsi=data.get('IMSI'),
                 iccid=data.get('ICCID'),
                 msisdn=data.get('MSISDN'),
