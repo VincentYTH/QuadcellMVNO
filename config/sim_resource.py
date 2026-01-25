@@ -6,6 +6,14 @@ CARD_TYPE_OPTIONS = ['Physical SIM', 'eSIM', 'Soft Profile']
 # 根据供应商预设资源类型选项
 RESOURCES_TYPE_OPTIONS = {'45407', '45400', '45431', '45412_C', '45412_H', 'Simlessly eSIM', 'Neware eSIM'}
 
+# 供應商與資源類型的對應關係配置
+PROVIDER_RESOURCES_MAPPING = {
+    'CUHK': ['45407', 'Simlessly eSIM', 'Neware eSIM'],
+    'CHKT': ['45400', 'Simlessly eSIM', 'Neware eSIM'],
+    'CTG': ['45431', 'Simlessly eSIM', 'Neware eSIM'],
+    'Montnet': ['45412_C', '45412_H', 'Simlessly eSIM']
+}
+
 # 数据库配置
 SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:123456@192.168.1.104:5432/sim_management_db'
 SQLALCHEMY_TRACK_MODIFICATIONS = False

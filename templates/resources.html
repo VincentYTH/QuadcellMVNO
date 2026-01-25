@@ -101,23 +101,20 @@
         padding: 0 5px;
         font-size: 0.8rem;
     }
-    .remark-cell {
-        max-width: 150px; 
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+    
     /* Remark 標題樣式 - 提示可點擊 */
     .remark-header-clickable {
         cursor: pointer;
         user-select: none;
         white-space: nowrap;
         position: relative;
-    }    
+    }
+    
     .remark-header-clickable:hover {
         background-color: #f0f0f0;
         color: #0d6efd; /* hover 時變色提示 */
     }
+
     /* 默認 Remark 單元格樣式 (限制長度) */
     .remark-cell {
         max-width: 150px; 
@@ -126,6 +123,7 @@
         text-overflow: ellipsis;
         transition: all 0.3s ease; /* 添加過渡動畫 */
     }
+
     /* 展開模式下的樣式 */
     /* 當表格擁有 .show-full-remark 類時應用此樣式 */
     .table.show-full-remark .remark-cell {
@@ -141,8 +139,19 @@
 {% block content %}
 <h2 class="mb-4">{{ _('sim_resource_management') }}</h2>
 
-<div class="d-flex justify-content-between mb-3">
-    <div>
+<div class="d-flex justify-content-between mb-3 align-items-center">
+    <div class="d-flex align-items-center">
+        <div class="btn-group me-3" role="group" aria-label="View Mode">
+            <a href="#" onclick="changeViewMode('single'); return false;" 
+               class="btn btn-sm {% if view_mode != 'range' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                <i class="bi bi-list"></i> 按單個 IMSI
+            </a>
+            <a href="#" onclick="changeViewMode('range'); return false;" 
+               class="btn btn-sm {% if view_mode == 'range' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                <i class="bi bi-list-nested"></i> 按 IMSI 段
+            </a>
+        </div>
+
         <button type="button" class="btn btn-info text-white shadow-sm" data-bs-toggle="modal" data-bs-target="#inventoryModal" id="btnInventoryOverview">
             <i class="bi bi-graph-up"></i> 庫存概覽
         </button>
@@ -174,6 +183,7 @@
 <div class="search-filter-group">
     <form class="mb-4" method="GET" id="searchForm">
         <input type="hidden" name="per_page" value="{{ search_params.per_page }}">
+        <input type="hidden" name="view_mode" value="{{ view_mode }}">
 
         <div class="row mb-2 g-2">
             <div class="col-md-2">
@@ -333,64 +343,78 @@
                 <th style="width: 30px;">
                     <input type="checkbox" class="form-check-input" id="selectAll">
                 </th>
-                <th class="sortable-header" onclick="sortTable('status')">
+                
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('status')"{% endif %}>
                     Status
-                    {% if search_params.sort == 'status' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
-                <th class="sortable-header" onclick="sortTable('supplier')">
-                    Provider
-                    {% if search_params.sort == 'supplier' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
-                <th class="sortable-header" onclick="sortTable('type')">
-                    CardType
-                    {% if search_params.sort == 'type' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
-                <th class="sortable-header" onclick="sortTable('resources_type')">
-                    ResourcesType
-                    {% if search_params.sort == 'resources_type' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
-                <th class="sortable-header" onclick="sortTable('batch')">
-                    Batch
-                    {% if search_params.sort == 'batch' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
-                <th class="sortable-header" onclick="sortTable('imsi')">
-                    IMSI
-                    {% if search_params.sort == 'imsi' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
-                <th class="sortable-header" onclick="sortTable('iccid')">
-                    ICCID
-                    {% if search_params.sort == 'iccid' %}
-                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
-                    {% endif %}
-                </th>
-                <th class="sortable-header" onclick="sortTable('msisdn')">
-                    MSISDN
-                    {% if search_params.sort == 'msisdn' %}
+                    {% if view_mode != 'range' and search_params.sort == 'status' %}
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
                 
-                <th class="sortable-header" onclick="sortTable('customer')">
-                    Customer
-                    {% if search_params.sort == 'customer' %}
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('supplier')"{% endif %}>
+                    Provider
+                    {% if view_mode != 'range' and search_params.sort == 'supplier' %}
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
-                <th class="sortable-header" onclick="sortTable('assigned_date')">
+                
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('type')"{% endif %}>
+                    CardType
+                    {% if view_mode != 'range' and search_params.sort == 'type' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('resources_type')"{% endif %}>
+                    ResourcesType
+                    {% if view_mode != 'range' and search_params.sort == 'resources_type' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('batch')"{% endif %}>
+                    Batch
+                    {% if view_mode != 'range' and search_params.sort == 'batch' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                
+                {% if view_mode == 'range' %}
+                    <th>Count</th>
+                    <th>IMSI Range</th>
+                    <th>ICCID Range</th>
+                    <th>MSISDN Range</th>
+                {% else %}
+                    <th class="sortable-header" onclick="sortTable('imsi')">
+                        IMSI
+                        {% if search_params.sort == 'imsi' %}
+                            <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                        {% endif %}
+                    </th>
+                    <th class="sortable-header" onclick="sortTable('iccid')">
+                        ICCID
+                        {% if search_params.sort == 'iccid' %}
+                            <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                        {% endif %}
+                    </th>
+                    <th class="sortable-header" onclick="sortTable('msisdn')">
+                        MSISDN
+                        {% if search_params.sort == 'msisdn' %}
+                            <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                        {% endif %}
+                    </th>
+                {% endif %}
+                
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('customer')"{% endif %}>
+                    Customer
+                    {% if view_mode != 'range' and search_params.sort == 'customer' %}
+                        <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
+                    {% endif %}
+                </th>
+                
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('assigned_date')"{% endif %}>
                     Assign Date
-                    {% if search_params.sort == 'assigned_date' %}
+                    {% if view_mode != 'range' and search_params.sort == 'assigned_date' %}
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
@@ -400,26 +424,30 @@
                     <i class="bi bi-arrows-expand ms-1" id="remarkToggleIcon"></i>
                 </th>
                 
-                <th class="sortable-header" onclick="sortTable('created_at')">
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('created_at')"{% endif %}>
                     Create Time
-                    {% if search_params.sort == 'created_at' %}
+                    {% if view_mode != 'range' and search_params.sort == 'created_at' %}
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
-                <th class="sortable-header" onclick="sortTable('updated_at')">
+                <th {% if view_mode != 'range' %}class="sortable-header" onclick="sortTable('updated_at')"{% endif %}>
                     Updated Time
-                    {% if search_params.sort == 'updated_at' %}
+                    {% if view_mode != 'range' and search_params.sort == 'updated_at' %}
                         <i class="bi bi-arrow-{% if search_params.order == 'asc' %}up{% else %}down{% endif %} sort-icon"></i>
                     {% endif %}
                 </th>
+                
+                {% if view_mode != 'range' %}
                 <th>{{ _('actions') }}</th>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
             {% for res in resources %}
             <tr>
                 <td>
-                    <input type="checkbox" class="form-check-input resource-checkbox" value="{{ res.id }}">
+                    <input type="checkbox" class="form-check-input resource-checkbox" 
+                           value="{% if view_mode == 'range' %}{{ res.ids_list | tojson }}{% else %}{{ res.id }}{% endif %}">
                 </td>
                 <td>
                     {% if res.status == 'Available' %}
@@ -432,9 +460,43 @@
                 <td><span class="badge bg-{% if res.type == 'Physical SIM' %}primary{% elif res.type == 'eSIM' %}success{% else %}warning{% endif %}">{{ res.type }}</span></td>
                 <td>{{ res.resources_type or '' }}</td>
                 <td>{{ res.batch or '' }}</td>
-                <td>{{ res.imsi or '' }}</td>
-                <td>{{ res.iccid or '' }}</td>
-                <td>{{ res.msisdn or '' }}</td>
+
+                {% if view_mode == 'range' %}
+                    <td><strong>{{ res.count }}</strong></td>
+                    <td class="font-monospace" style="font-size: 1.0rem;">
+                        {% if res.start_imsi == res.end_imsi %}
+                            {{ res.start_imsi }}
+                        {% else %}
+                            {{ res.start_imsi }} ~<br>{{ res.end_imsi }}
+                        {% endif %}
+                    </td>
+                    <td class="font-monospace" style="font-size: 1.0rem;">
+                        {% if res.start_iccid %}
+                            {% if res.start_iccid == res.end_iccid %}
+                                {{ res.start_iccid }}
+                            {% else %}
+                                {{ res.start_iccid }} ~<br>{{ res.end_iccid }}
+                            {% endif %}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="font-monospace" style="font-size: 1.0rem;">
+                        {% if res.start_msisdn %}
+                            {% if res.start_msisdn == res.end_msisdn %}
+                                {{ res.start_msisdn }}
+                            {% else %}
+                                {{ res.start_msisdn }} ~<br>{{ res.end_msisdn }}
+                            {% endif %}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                {% else %}
+                    <td>{{ res.imsi or '' }}</td>
+                    <td>{{ res.iccid or '' }}</td>
+                    <td>{{ res.msisdn or '' }}</td>
+                {% endif %}
                 
                 <td>{{ res.customer or '-' }}</td>
                 <td>{{ res.assigned_date or '-' }}</td>
@@ -446,6 +508,7 @@
                 <td>{{ res.created_at | hk_time }}</td>
                 <td>{{ res.updated_at | hk_time }}</td>
                 
+                {% if view_mode != 'range' %}
                 <td>
                     <div class="btn-group btn-group-sm">
                         <button class="btn btn-warning edit-btn"
@@ -472,6 +535,7 @@
                         </button>
                     </div>
                 </td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>
@@ -487,7 +551,11 @@
         </select>
         
         <span class="text-muted small">
-            Total <strong>{{ pagination.total }}</strong> records
+            {% if view_mode == 'range' %}
+                Total <strong>{{ pagination.total }}</strong> Groups
+            {% else %}
+                Total <strong>{{ pagination.total }}</strong> records
+            {% endif %}
         </span>
     </div>
 
@@ -515,6 +583,13 @@
     </nav>
     {% endif %}
 </div>
+
+{% include "assign_modal_content.html" ignore missing %}
+{% include "add_modal_content.html" ignore missing %}
+{% include "import_modal_content.html" ignore missing %}
+{% include "export_modal_content.html" ignore missing %}
+{% include "batch_ops_modal_content.html" ignore missing %}
+{% include "inventory_modal_content.html" ignore missing %}
 
 <div class="modal fade" id="assignModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -710,7 +785,6 @@
             <div class="modal-body">
                 <form id="resourceForm">
                     <input type="hidden" id="editId">
-                    
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label class="form-label">Provider *</label>
@@ -731,7 +805,6 @@
                             </select>
                         </div>
                     </div>
-                    
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label class="form-label">ResourcesType *</label>
@@ -747,7 +820,6 @@
                             <input type="text" id="batch" class="form-control" required>
                         </div>
                     </div>
-                    
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label class="form-label">ReceivedDate (yyyymmdd) *</label>
@@ -758,7 +830,6 @@
                             <input type="text" id="imsi" class="form-control" required>
                         </div>
                     </div>
-                    
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label class="form-label">ICCID *</label>
@@ -769,7 +840,6 @@
                             <input type="text" id="msisdn" class="form-control" required>
                         </div>
                     </div>
-                    
                     <div id="conditionalFields">
                         <div class="row mb-3 softprofile-fields d-none">
                             <div class="col-md-6">
@@ -788,21 +858,18 @@
                             </div>
                         </div>
                     </div>
-
                     <div class="row mb-3">
                         <div class="col-md-3"><label class="form-label">PIN1</label><input type="text" id="pin1" class="form-control"></div>
                         <div class="col-md-3"><label class="form-label">PUK1</label><input type="text" id="puk1" class="form-control"></div>
                         <div class="col-md-3"><label class="form-label">PIN2</label><input type="text" id="pin2" class="form-control"></div>
                         <div class="col-md-3"><label class="form-label">PUK2</label><input type="text" id="puk2" class="form-control"></div>
                     </div>
-
                     <div class="row mb-3">
                         <div class="col-md-12">
                             <label class="form-label">Remark <small class="text-muted">(Max 50 chars)</small></label>
                             <input type="text" id="remark" class="form-control" maxlength="50" placeholder="Optional remark">
                         </div>
                     </div>
-
                 </form>
             </div>
             <div class="modal-footer">
@@ -813,31 +880,29 @@
     </div>
 </div>
 
-<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+<div class="modal fade" id="importModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="importModalLabel">{{ _('import_resources') }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">{{ _('import_resources') }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle"></i> 
                     {{ _('import_tip') }}
-                    
                     <div class="mt-3">
                         <a href="/api/template/sim_resources" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-download"></i> 下載導入模板
                         </a>
                     </div>
                 </div>
-                
                 <form id="importForm" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="importFile" class="form-label">{{ _('choose_file') }}</label>
                         <input type="file" class="form-control" id="importFile" name="file" accept=".xlsx,.xls" required>
                     </div>
-                    </form>
+                </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('cancel') }}</button>
@@ -871,7 +936,6 @@
                             </label>
                         </div>
                     </div>
-
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <label class="form-label fw-bold mb-0">2. 欄位選擇與排序</label>
@@ -880,10 +944,8 @@
                                 <label class="form-check-label small" for="selectAllColumns">全選</label>
                             </div>
                         </div>
-                        <div class="column-list" id="columnList">
-                            </div>
+                        <div class="column-list" id="columnList"></div>
                     </div>
-
                     <div class="mb-3 p-2 bg-light rounded border">
                         <label class="form-label fw-bold small text-muted">額外篩選 (僅適用於"當前搜索結果")</label>
                         <div class="row g-2">
@@ -942,7 +1004,6 @@
                                 按 IMSI 範圍
                             </label>
                         </div>
-                        
                         <div id="opsRangeInputs" class="row g-2 mt-2 ms-3" style="display:none;">
                             <div class="col-6">
                                 <input type="text" class="form-control form-control-sm" id="opsStartImsi" placeholder="Start IMSI">
@@ -952,7 +1013,6 @@
                             </div>
                         </div>
                     </div>
-
                     <div class="mb-3">
                         <label class="form-label fw-bold border-bottom w-100 pb-1">2. 選擇操作</label>
                         <ul class="nav nav-pills nav-fill mb-3" id="opsTypeTab" role="tablist">
@@ -967,7 +1027,6 @@
                                 </button>
                             </li>
                         </ul>
-                        
                         <div class="tab-content border rounded p-3 bg-light">
                             <div class="tab-pane fade show active" id="ops-edit" role="tabpanel">
                                 <div class="alert alert-info py-2 small mb-3">
@@ -1009,7 +1068,6 @@
                                         <label class="form-label small">ReceivedDate</label>
                                         <input type="text" class="form-control form-control-sm" id="opsReceivedDate" placeholder="(不修改)">
                                     </div>
-                                    
                                     <div class="col-md-12">
                                         <label class="form-label small">Remark</label>
                                         <input type="text" class="form-control form-control-sm" id="opsRemark" maxlength="50" placeholder="(不修改)">
@@ -1019,7 +1077,6 @@
                                     <button type="button" class="btn btn-primary" id="btnExecEdit">執行更新</button>
                                 </div>
                             </div>
-                            
                             <div class="tab-pane fade" id="ops-delete" role="tabpanel">
                                 <div class="alert alert-danger mb-3">
                                     <strong><i class="bi bi-exclamation-triangle-fill"></i> 警告：</strong><br>
@@ -1052,15 +1109,13 @@
                         <label class="form-check-label small fw-bold" for="showZeroStock">顯示 0 庫存項目</label>
                     </div>
                 </div>
-                
                 <div id="inventoryLoading" class="text-center py-3">
                     <div class="spinner-border text-info" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                     <p class="mt-2 text-muted">正在加載庫存數據...</p>
                 </div>
-                <div id="inventoryContent" style="display: none;">
-                    </div>
+                <div id="inventoryContent" style="display: none;"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
@@ -1073,6 +1128,33 @@
 
 {% block extra_js %}
 <script>
+// [新增] 切換視圖模式
+function changeViewMode(mode) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('view_mode', mode);
+    // 重置分頁到第一頁，避免頁碼不對應
+    params.set('page', 1);
+    window.location.href = `?${params.toString()}`;
+}
+
+// [新增] 切換 Remark 顯示模式
+function toggleRemarkMode(header) {
+    var table = document.querySelector('table');
+    var icon = header.querySelector('#remarkToggleIcon');
+    
+    // 切換表格上的類
+    table.classList.toggle('show-full-remark');
+    
+    // 切換圖標
+    if (table.classList.contains('show-full-remark')) {
+        icon.classList.remove('bi-arrows-expand');
+        icon.classList.add('bi-arrows-collapse');
+    } else {
+        icon.classList.remove('bi-arrows-collapse');
+        icon.classList.add('bi-arrows-expand');
+    }
+}
+
 // 模板函數：構建分頁URL
 function build_pagination_url(page) {
     const params = new URLSearchParams(window.location.search);
@@ -1087,50 +1169,31 @@ function sortTable(field) {
     const currentOrder = params.get('order');
     
     if (currentSort === field) {
-        // 切換排序方向
         params.set('order', currentOrder === 'asc' ? 'desc' : 'asc');
     } else {
-        // 新字段排序
         params.set('sort', field);
         params.set('order', 'asc');
     }
-    
-    // 移除page參數，回到第一頁
     params.delete('page');
-    
     window.location.href = `?${params.toString()}`;
-}
-
-// 切換 Remark 顯示模式
-function toggleRemarkMode(header) {
-    var table = document.querySelector('table');
-    var icon = header.querySelector('#remarkToggleIcon');
-    
-    // 切換表格上的類
-    table.classList.toggle('show-full-remark');
-    
-    // 切換圖標
-    if (table.classList.contains('show-full-remark')) {
-        icon.classList.remove('bi-arrows-expand');
-        icon.classList.add('bi-arrows-collapse');
-        // header.style.width = "300px"; // 可選：直接鎖定標題寬度
-    } else {
-        icon.classList.remove('bi-arrows-collapse');
-        icon.classList.add('bi-arrows-expand');
-        // header.style.width = "auto";
-    }
 }
 
 // 清空過濾器
 function clearFilter(field) {
     const params = new URLSearchParams(window.location.search);
     params.delete(field);
-    params.delete('page'); // 回到第一頁
+    params.delete('page'); 
     window.location.href = `?${params.toString()}`;
 }
 
+// 清空過濾器，但保留 view_mode 和 per_page
 function clearAllFilters() {
-    window.location.href = '/resources';
+    const params = new URLSearchParams(window.location.search);
+    const viewMode = params.get('view_mode') || 'single';
+    const perPage = params.get('per_page') || '20';
+    
+    // 重定向到基礎 URL，只帶上這兩個參數
+    window.location.href = `/resources?view_mode=${viewMode}&per_page=${perPage}`;
 }
 
 function goToPage(page) {
@@ -1139,172 +1202,221 @@ function goToPage(page) {
     window.location.href = `?${params.toString()}`;
 }
 
-// 修改每頁顯示數量
 function changePerPage(val) {
     const params = new URLSearchParams(window.location.search);
     params.set('per_page', val);
-    params.set('page', 1); // 改變顯示數量後重置回第一頁
+    params.set('page', 1);
     window.location.href = `?${params.toString()}`;
 }
 
-// 更新資源類型選項函數
-function updateResourceTypes(provider, selectedValue) {
-    const presetTypes = {
-        'Quadcell': ['Prepaid', 'Postpaid', 'Data Only'],
-        'Montnet': ['MNT000', 'MNT001', 'MNT002']
-    };
+// 獲取後端傳遞的對應關係，如果沒有則為空對象
+const providerMapping = {{ options.provider_mapping | default({}) | tojson }};
+const allResourcesTypes = {{ options.resources_types | default([]) | tojson }};
+
+function updateResourceTypes(provider, targetSelector, defaultText, selectedValue) {
+    const $select = $(targetSelector);
+    $select.empty().append(`<option value="">${defaultText}</option>`);
     
-    const resourcesTypeSelect = $('#resourcesType');
-    resourcesTypeSelect.empty().append('<option value="">請選擇資源類型</option>');
+    let types = [];
     
-    const types = presetTypes[provider] || ['Default'];
+    if (!provider) {
+        // 如果沒有選擇 Provider (或選擇了"不修改")，顯示所有可用的 Resources Types
+        types = allResourcesTypes;
+    } else {
+        // 根據 Provider 獲取對應的 Types
+        types = providerMapping[provider] || [];
+    }
+    
+    // 生成選項
     types.forEach(type => {
-        resourcesTypeSelect.append(`<option value="${type}">${type}</option>`);
+        $select.append(`<option value="${type}">${type}</option>`);
     });
     
-    // 如果有提供選中的值，則選中它
+    // 如果有選中的值（編輯模式或回填），確保它被選中
     if (selectedValue) {
-        // 檢查該值是否在預設列表中，如果不在，手動添加它（支持舊數據）
-        if (resourcesTypeSelect.find(`option[value="${selectedValue}"]`).length === 0) {
-            resourcesTypeSelect.append(`<option value="${selectedValue}">${selectedValue}</option>`);
+        // 如果該值不在列表中（可能是舊數據），手動添加它
+        if ($select.find(`option[value="${selectedValue}"]`).length === 0) {
+            $select.append(`<option value="${selectedValue}">${selectedValue}</option>`);
         }
-        resourcesTypeSelect.val(selectedValue);
+        $select.val(selectedValue);
     }
 }
-
-// 全局變量 (用於導出功能和批量操作)
 var selectedResourceIds = [];
-
-// 定義所有可用欄位 (導出用)
-var availableColumns = [
-    "IMSI", 
-    "ICCID", 
-    "MSISDN", 
-    "LPA",  
-    "Ki", 
-    "OPC",    
-    "Customer", 
-    "Assign Date",     
-    "Provider", 
-    "CardType", 
-    "ResourcesType", 
-    "Remark", 
-    "Status",     
-    "Batch", 
-    "ReceivedDate", 
-    "PIN1", 
-    "PUK1", 
-    "PIN2", 
-    "PUK2",     
-    "Created At", 
-    "Updated At"
-];
-
-// 默認勾選的欄位
+var availableColumns = ["IMSI", "ICCID", "MSISDN", "LPA", "Ki", "OPC", "Customer", "Assign Date", "Provider", "CardType", "ResourcesType", "Remark", "Status", "Batch", "ReceivedDate", "PIN1", "PUK1", "PIN2", "PUK2", "Created At", "Updated At"];
 var defaultCheckedCols = ['IMSI', 'ICCID', 'MSISDN'];
 
-// 更新選中ID的函數 (提取出來以便調用)
+// [修改] 支援段落模式下 checkbox value 為 JSON 數組的情況
 function updateSelectedIds() {
     selectedResourceIds = [];
     $('.resource-checkbox:checked').each(function() {
-        selectedResourceIds.push(parseInt($(this).val()));
+        var val = $(this).val();
+        if (val.startsWith('[')) {
+            // Range 模式：解析 JSON 數組並合併 ID
+            try {
+                var ids = JSON.parse(val);
+                selectedResourceIds = selectedResourceIds.concat(ids);
+            } catch(e) { console.error('Error parsing checkbox range value', e); }
+        } else {
+            // Single 模式：直接添加 ID
+            selectedResourceIds.push(parseInt(val));
+        }
     });
-    
-    // 更新所有顯示計數的地方 (包括 assignModal 和 exportModal 中的計數)
     $('.selected-count-display, #selectedCountDisplay, #opsSelectedCount').text(selectedResourceIds.length);
 }
 
 $(document).ready(function() {
-    // 設置資源分配日期默認值為今天
     const today = new Date().toISOString().split('T')[0];
     $('#assignDate').val(today);
     $('#manualDate').val(today);
-    
     let currentOptions = [];
     let selectedOptionIndex = -1;
 
-    // --- 複選框邏輯 (優先綁定) ---
-    
-    // 全選/取消全選
     $('#selectAll').change(function() {
         var isChecked = $(this).is(':checked');
         $('.resource-checkbox').prop('checked', isChecked);
         updateSelectedIds();
     });
 
-    // 單個複選框變更
     $(document).on('change', '.resource-checkbox', function() {
         updateSelectedIds();
-        
-        // 更新全選按鈕狀態
         var allChecked = $('.resource-checkbox').length > 0 && $('.resource-checkbox:checked').length === $('.resource-checkbox').length;
         $('#selectAll').prop('checked', allChecked);
     });
 
-    // 初始化時先更新一次 (防止頁面刷新後複選框狀態保留但變量重置)
     updateSelectedIds();
 
-    // --- 搜索欄清除按鈕邏輯 ---
     $('.btn-clear').click(function() {
         var $inputGroup = $(this).closest('.input-group');
-        
-        // 處理日期範圍 (有兩個 input)
         if ($(this).data('target') === 'date-range') {
             $inputGroup.find('input').val('');
         } else {
-            // 處理一般單一 input 或 select
             var $input = $inputGroup.find('input, select');
             $input.val('').trigger('change'); 
         }
     });
+    
+    // [修改] 加載導出過濾器的函數
+    function loadExportFilterOptions(updateTarget = 'all') {
+        var searchParams = {};
+        var urlParams = new URLSearchParams(window.location.search);
+        for(var pair of urlParams.entries()) {
+           searchParams[pair[0]] = pair[1]; 
+        }
+        
+        // 獲取 Modal 當前選中的 Customer
+        var currentCustomer = $('#exportCustomer').val();
+        
+        var requestData = {
+            search_params: searchParams,
+            modal_filters: {
+                customer: currentCustomer // [新增] 傳遞 customer 選擇
+            }
+        };
+        var $custSelect = $('#exportCustomer');
+        var $dateSelect = $('#exportAssignDate');
+        
+        // 根據目標設置 Loading 狀態
+        if (updateTarget === 'all') {
+            $custSelect.prop('disabled', true);
+            $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
+        } else if (updateTarget === 'date') {
+            $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
+        }
+        
+        $.ajax({
+            url: '/resources/api/export/options',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(requestData),
+            success: function(res) {
+                // 如果是 'all'，重建 Customer 下拉
+                if (updateTarget === 'all') {
+                    $custSelect.empty().append('<option value="ALL">ALL</option>');
+                    res.customers.forEach(function(c) {
+                        var selected = (c === currentCustomer) ? 'selected' : '';
+                        $custSelect.append(`<option value="${c}" ${selected}>${c}</option>`);
+                    });
+                    $custSelect.prop('disabled', false);
+                }
+                
+                // 始終重建 Date 下拉 (因為它依賴 Customer)
+                var currentDate = $dateSelect.val(); 
+                $dateSelect.empty().append('<option value="ALL">ALL</option>');
+                res.assigned_dates.forEach(function(d) {
+                    var selected = (d === currentDate) ? 'selected' : '';
+                    $dateSelect.append(`<option value="${d}" ${selected}>${d}</option>`);
+                });
+                $dateSelect.prop('disabled', false);
+            },
+            error: function() {
+                if (updateTarget === 'all') $custSelect.prop('disabled', false);
+                $dateSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
+            }
+        });
+    }
 
-    // --- Resource Assignment Modal Logic ---
+    $('input[name="exportScope"]').change(function() {
+        var scope = $(this).val();
+        var $filterDiv = $('#exportCustomer').closest('.mb-3'); 
+        if (scope === 'search') {
+            $('#exportCustomer, #exportAssignDate').prop('disabled', false);
+            loadExportFilterOptions('all');
+            $filterDiv.removeClass('opacity-50');
+        } else {
+            $('#exportCustomer, #exportAssignDate').prop('disabled', true).val('ALL');
+            $filterDiv.addClass('opacity-50');
+        }
+        $('.column-item[data-col="Customer"] .col-checkbox').prop('checked', false);
+        $('.column-item[data-col="Assign Date"] .col-checkbox').prop('checked', false);
+        updateSelectAllColumnsState();
+    });
 
-    // 監聽 Modal 打開
+    $('#exportModal').on('show.bs.modal', function() {
+        if ($('#scopeSearch').is(':checked')) {
+            loadExportFilterOptions('all');
+        } else {
+             $('#exportCustomer, #exportAssignDate').prop('disabled', true);
+             $('#exportCustomer').closest('.mb-3').addClass('opacity-50');
+        }
+    });
+
+    // [修改] 監聽 Customer 變化，只更新 Date
+    $('#exportCustomer').change(function() {
+        var val = $(this).val();
+        loadExportFilterOptions('date'); // [關鍵修改] 傳入 'date'
+        
+        var targetCols = ['Customer', 'Assign Date'];
+        if (val !== 'ALL') {
+            targetCols.forEach(col => { $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', true); });
+        } else {
+            targetCols.forEach(col => { $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', false); });
+        }
+        updateSelectAllColumnsState();
+    });
+
     $('#assignModal').on('show.bs.modal', function () {
-        // 再次確保計數正確
         updateSelectedIds();
-        
-        // 智能默認選中：如果有選中項目，默認選 "Selected"，否則選 "Range"
         var defaultScope = selectedResourceIds.length > 0 ? 'selected' : 'range';
-        
-        // 設置單選按鈕狀態並觸發變更事件以更新 UI
-        // 使用 prop 和 trigger('change') 確保事件被觸發
         $('input[name="manualScope"]').filter(`[value="${defaultScope}"]`).prop('checked', true).trigger('change');
         $('input[name="cancelScope"]').filter(`[value="${defaultScope}"]`).prop('checked', true).trigger('change');
     });
 
-    // Manual Assign Scope 切換 - 使用事件委託確保穩定性
     $(document).on('change', 'input[name="manualScope"]', function() {
-        if ($('#manualScopeRange').is(':checked')) {
-            $('#manualRangeInputs').show(); // 使用 show() 代替 slideDown() 避免動畫問題
-        } else {
-            $('#manualRangeInputs').hide();
-        }
+        if ($('#manualScopeRange').is(':checked')) { $('#manualRangeInputs').show(); } else { $('#manualRangeInputs').hide(); }
     });
 
-    // Cancel Assign Scope 切換
     $(document).on('change', 'input[name="cancelScope"]', function() {
-        if ($('#cancelScopeRange').is(':checked')) {
-            $('#cancelRangeInputs').show();
-        } else {
-            $('#cancelRangeInputs').hide();
-        }
+        if ($('#cancelScopeRange').is(':checked')) { $('#cancelRangeInputs').show(); } else { $('#cancelRangeInputs').hide(); }
     });
 
-    // 自動分配：計算選項
     $('#btnCalculate').click(function() {
         const provider = $('#assignProvider').val();
         const cardType = $('#assignCardType').val();
         const resType = $('#assignResourcesType').val();
         const qty = $('#assignQty').val();
         
-        if (!provider || !cardType || !resType || !qty) {
-            alert('Please fill in all criteria fields.');
-            return;
-        }
+        if (!provider || !cardType || !resType || !qty) { alert('Please fill in all criteria fields.'); return; }
         
-        // 重置 UI
         $('#assignOptionsArea').hide();
         $('#autoAssignError').hide();
         $('#optionsContainer').empty();
@@ -1315,51 +1427,24 @@ $(document).ready(function() {
             url: '/resources/api/assign/calculate',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({
-                provider: provider,
-                card_type: cardType,
-                resources_type: resType,
-                quantity: qty
-            }),
+            data: JSON.stringify({ provider: provider, card_type: cardType, resources_type: resType, quantity: qty }),
             success: function(res) {
                 $('#btnCalculate').prop('disabled', false).text('Check & Calculate');
-                
                 if (res.success) {
                     currentOptions = res.options;
                     $('#assignOptionsArea').show();
-                    
                     if (currentOptions.length === 0) {
                         $('#optionsContainer').html('<div class="alert alert-warning">No options available. Please try Manual Assignment.</div>');
                     } else {
                         currentOptions.forEach((opt, index) => {
-                            let batchDetails = opt.batches.map(b => 
-                                `<li>Batch <b>${b.batch}</b> (${b.received_date}): Take <b>${b.take}</b> (Avail: ${b.available})</li>`
-                            ).join('');
-                            
-                            let html = `
-                                <div class="option-card" onclick="selectOption(${index})">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="assignOption" id="opt${index}" value="${index}">
-                                        <label class="form-check-label fw-bold" for="opt${index}">
-                                            ${opt.name}
-                                        </label>
-                                    </div>
-                                    <ul class="small text-muted mt-2 mb-0 ps-4">
-                                        ${batchDetails}
-                                    </ul>
-                                </div>
-                            `;
+                            let batchDetails = opt.batches.map(b => `<li>Batch <b>${b.batch}</b> (${b.received_date}): Take <b>${b.take}</b> (Avail: ${b.available})</li>`).join('');
+                            let html = `<div class="option-card" onclick="selectOption(${index})"><div class="form-check"><input class="form-check-input" type="radio" name="assignOption" id="opt${index}" value="${index}"><label class="form-check-label fw-bold" for="opt${index}">${opt.name}</label></div><ul class="small text-muted mt-2 mb-0 ps-4">${batchDetails}</ul></div>`;
                             $('#optionsContainer').append(html);
                         });
-                        
-                        // 默認選中第一個
                         selectOption(0);
                     }
                 } else {
-                    $('#autoAssignError').show().html(`
-                        <strong>庫存不足!</strong> ${res.message}<br>
-                        建議切換到 "Manual Assignment" 手動處理特定號段。
-                    `);
+                    $('#autoAssignError').show().html(`<strong>庫存不足!</strong> ${res.message}<br>建議切換到 "Manual Assignment" 手動處理特定號段。`);
                 }
             },
             error: function(err) {
@@ -1369,7 +1454,6 @@ $(document).ready(function() {
         });
     });
     
-    // 自動分配：選擇選項
     window.selectOption = function(index) {
         selectedOptionIndex = index;
         $('.option-card').removeClass('selected');
@@ -1378,10 +1462,8 @@ $(document).ready(function() {
         $('#btnConfirmAssign').prop('disabled', false);
     };
     
-    // 自動分配：確認提交
     $('#autoAssignForm').on('submit', function(e) {
         e.preventDefault();
-        
         if (selectedOptionIndex < 0) return;
         
         const customer = $('#assignCustomer').val();
@@ -1398,569 +1480,167 @@ $(document).ready(function() {
             url: '/resources/api/assign/confirm',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({
-                batches: plan,
-                customer: customer,
-                assigned_date: date,
-                remark: remark,
-                provider: provider,
-                card_type: cardType,
-                resources_type: resType
-            }),
+            data: JSON.stringify({ batches: plan, customer: customer, assigned_date: date, remark: remark, provider: provider, card_type: cardType, resources_type: resType }),
             success: function(res) {
-                if (res.success) {
-                    alert(res.message + "\n\nDetails:\n" + res.details.join('\n'));
-                    location.reload();
-                } else {
-                    alert('Assignment Failed: ' + res.message);
-                }
+                if (res.success) { alert(res.message + "\n\nDetails:\n" + res.details.join('\n')); location.reload(); }
+                else { alert('Assignment Failed: ' + res.message); }
             },
-            error: function(err) {
-                alert('Error: ' + err.responseText);
-            }
+            error: function(err) { alert('Error: ' + err.responseText); }
         });
     });
 
-    // 手動分配提交
     $('#manualAssignForm').on('submit', function(e) {
         e.preventDefault();
-        
         var scope = $('input[name="manualScope"]:checked').val();
         var startImsi = $('#manualStartImsi').val().trim();
         var endImsi = $('#manualEndImsi').val().trim();
         var customer = $('#manualCustomer').val().trim();
         var date = $('#manualDate').val();
         var remark = $('#manualRemark').val().trim();
-
-        // 驗證
-        if (scope === 'selected' && selectedResourceIds.length === 0) {
-            alert('請先在表格中勾選項目，或切換至 "按 IMSI 範圍"。');
-            return;
-        }
-        if (scope === 'range' && (!startImsi || !endImsi)) {
-            alert('請輸入起始和結束 IMSI。');
-            return;
-        }
-
+        if (scope === 'selected' && selectedResourceIds.length === 0) { alert('請先在表格中勾選項目，或切換至 "按 IMSI 範圍"。'); return; }
+        if (scope === 'range' && (!startImsi || !endImsi)) { alert('請輸入起始和結束 IMSI。'); return; }
         if (!confirm(`Confirm to assign resources to ${customer}?`)) return;
-        
         $.ajax({
-            url: '/resources/api/assign/manual',
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({
-                scope: scope,
-                ids: selectedResourceIds,
-                start_imsi: startImsi,
-                end_imsi: endImsi,
-                customer: customer,
-                assigned_date: date,
-                remark: remark
-            }),
-            success: function(res) {
-                if (res.success) {
-                    alert(res.message);
-                    location.reload();
-                } else {
-                    alert('Failed: ' + res.message);
-                }
-            },
-            error: function(err) {
-                alert('Error: ' + (err.responseJSON ? err.responseJSON.message : err.statusText));
-            }
+            url: '/resources/api/assign/manual', method: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ scope: scope, ids: selectedResourceIds, start_imsi: startImsi, end_imsi: endImsi, customer: customer, assigned_date: date, remark: remark }),
+            success: function(res) { if (res.success) { alert(res.message); location.reload(); } else { alert('Failed: ' + res.message); } },
+            error: function(err) { alert('Error: ' + (err.responseJSON ? err.responseJSON.message : err.statusText)); }
         });
     });
 
-    // 取消分配提交
     $('#cancelAssignForm').on('submit', function(e) {
         e.preventDefault();
-        
         var scope = $('input[name="cancelScope"]:checked').val();
         var startImsi = $('#cancelStartImsi').val().trim();
         var endImsi = $('#cancelEndImsi').val().trim();
         var remark = $('#cancelRemark').val().trim();
-        
-        // 驗證
-        if (scope === 'selected' && selectedResourceIds.length === 0) {
-            alert('請先在表格中勾選項目，或切換至 "按 IMSI 範圍"。');
-            return;
-        }
-        if (scope === 'range' && (!startImsi || !endImsi)) {
-            alert('請輸入起始和結束 IMSI。');
-            return;
-        }
-
-        if (!confirm(`DANGER: You are about to UNASSIGN resources.\nThese SIMs will become 'Available' and customer info will be cleared.\n\nContinue?`)) {
-            return;
-        }
-        
+        if (scope === 'selected' && selectedResourceIds.length === 0) { alert('請先在表格中勾選項目，或切換至 "按 IMSI 範圍"。'); return; }
+        if (scope === 'range' && (!startImsi || !endImsi)) { alert('請輸入起始和結束 IMSI。'); return; }
+        if (!confirm(`DANGER: You are about to UNASSIGN resources.\nThese SIMs will become 'Available' and customer info will be cleared.\n\nContinue?`)) return;
         var btn = $(this).find('button[type="submit"]');
         var originalText = btn.html();
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Processing...');
-
         $.ajax({
-            url: '/resources/api/assign/cancel', 
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({
-                scope: scope,
-                ids: selectedResourceIds,
-                start_imsi: startImsi,
-                end_imsi: endImsi,
-                remark: remark
-            }),
-            success: function(res) {
-                if (res.success) {
-                    alert(res.message);
-                    location.reload();
-                } else {
-                    alert('Failed: ' + res.message);
-                    btn.prop('disabled', false).html(originalText);
-                }
-            },
-            error: function(err) {
-                alert('Error: ' + (err.responseJSON ? err.responseJSON.message : err.statusText));
-                btn.prop('disabled', false).html(originalText);
-            }
+            url: '/resources/api/assign/cancel', method: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ scope: scope, ids: selectedResourceIds, start_imsi: startImsi, end_imsi: endImsi, remark: remark }),
+            success: function(res) { if (res.success) { alert(res.message); location.reload(); } else { alert('Failed: ' + res.message); btn.prop('disabled', false).html(originalText); } },
+            error: function(err) { alert('Error: ' + (err.responseJSON ? err.responseJSON.message : err.statusText)); btn.prop('disabled', false).html(originalText); }
         });
     });
 
-    // --- 批量操作 (Modal 相關邏輯) ---
     $('#batchOpsModal').on('show.bs.modal', function () {
-        updateSelectedIds(); // 確保計數最新
-        
+        updateSelectedIds();
         var defaultScope = selectedResourceIds.length > 0 ? 'selected' : 'range';
-        
         $('input[name="opsScope"]').filter(`[value="${defaultScope}"]`).prop('checked', true).trigger('change');
+        $('#opsProvider').val(''); 
+        updateResourceTypes('', '#opsResourcesType', '(不修改)');
     });
 
-    // 監聽範圍切換
     $(document).on('change', 'input[name="opsScope"]', function() {
-        if ($('#opsScopeRange').is(':checked')) {
-            $('#opsRangeInputs').show();
-        } else {
-            $('#opsRangeInputs').hide();
-        }
+        if ($('#opsScopeRange').is(':checked')) { $('#opsRangeInputs').show(); } else { $('#opsRangeInputs').hide(); }
     });
 
-    // 執行批量操作的通用函數
     function executeBatchOperation(action) {
         var scope = $('input[name="opsScope"]:checked').val();
         var startImsi = $('#opsStartImsi').val().trim();
         var endImsi = $('#opsEndImsi').val().trim();
-        
-        // 驗證
-        if (scope === 'selected' && selectedResourceIds.length === 0) {
-            alert('請先在表格中勾選項目，或切換至 "按 IMSI 範圍" 操作。');
-            return;
-        }
-        if (scope === 'range' && (!startImsi || !endImsi)) {
-            alert('請輸入起始和結束 IMSI。');
-            return;
-        }
-
-        // 收集數據
-        var payload = {
-            action: action,
-            scope: scope,
-            ids: selectedResourceIds,
-            start_imsi: startImsi,
-            end_imsi: endImsi,
-            data: {}
-        };
-
-        // 如果是編輯，收集表單數據
+        if (scope === 'selected' && selectedResourceIds.length === 0) { alert('請先在表格中勾選項目，或切換至 "按 IMSI 範圍" 操作。'); return; }
+        if (scope === 'range' && (!startImsi || !endImsi)) { alert('請輸入起始和結束 IMSI。'); return; }
+        var payload = { action: action, scope: scope, ids: selectedResourceIds, start_imsi: startImsi, end_imsi: endImsi, data: {} };
         if (action === 'edit') {
             var hasChanges = false;
-            var editData = {
-                'Provider': $('#opsProvider').val(),
-                'CardType': $('#opsCardType').val(),
-                'ResourcesType': $('#opsResourcesType').val(),
-                'Batch': $('#opsBatch').val(),
-                'ReceivedDate': $('#opsReceivedDate').val(),
-                'Remark': $('#opsRemark').val()
-            };
-            
-            for (var key in editData) {
-                if (editData[key]) hasChanges = true;
-            }
-            
-            if (!hasChanges) {
-                alert('請至少填寫一個要修改的欄位。');
-                return;
-            }
+            var editData = { 'Provider': $('#opsProvider').val(), 'CardType': $('#opsCardType').val(), 'ResourcesType': $('#opsResourcesType').val(), 'Batch': $('#opsBatch').val(), 'ReceivedDate': $('#opsReceivedDate').val(), 'Remark': $('#opsRemark').val() };
+            for (var key in editData) { if (editData[key]) hasChanges = true; }
+            if (!hasChanges) { alert('請至少填寫一個要修改的欄位。'); return; }
             payload.data = editData;
         }
-
-        // 二次確認
-        var confirmMsg = action === 'delete' 
-            ? '警告：確定要執行批量刪除嗎？此操作不可恢復！' 
-            : '確定要執行批量更新嗎？';
-            
+        var confirmMsg = action === 'delete' ? '警告：確定要執行批量刪除嗎？此操作不可恢復！' : '確定要執行批量更新嗎？';
         if (!confirm(confirmMsg)) return;
-
-        // UI Loading
         var btnId = action === 'edit' ? '#btnExecEdit' : '#btnExecDelete';
         var $btn = $(btnId);
         var originalText = $btn.html();
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 執行中...');
-
-        // 發送請求
         $.ajax({
-            url: '/resources/api/batch/operation',
-            method: 'POST',
-            contentType: 'application/json',
+            url: '/resources/api/batch/operation', method: 'POST', contentType: 'application/json',
             data: JSON.stringify(payload),
-            success: function(res) {
-                if (res.success) {
-                    alert(res.message);
-                    location.reload();
-                } else {
-                    alert('操作失敗: ' + res.message);
-                    $btn.prop('disabled', false).html(originalText);
-                }
-            },
-            error: function(xhr) {
-                var msg = xhr.responseJSON ? xhr.responseJSON.message : '未知錯誤';
-                alert('請求錯誤: ' + msg);
-                $btn.prop('disabled', false).html(originalText);
-            }
+            success: function(res) { if (res.success) { alert(res.message); location.reload(); } else { alert('操作失敗: ' + res.message); $btn.prop('disabled', false).html(originalText); } },
+            error: function(xhr) { var msg = xhr.responseJSON ? xhr.responseJSON.message : '未知錯誤'; alert('請求錯誤: ' + msg); $btn.prop('disabled', false).html(originalText); }
         });
     }
 
-    // 綁定按鈕事件
-    $('#btnExecEdit').click(function() {
-        executeBatchOperation('edit');
-    });
+    $('#btnExecEdit').click(function() { executeBatchOperation('edit'); });
+    $('#btnExecDelete').click(function() { executeBatchOperation('delete'); });
 
-    $('#btnExecDelete').click(function() {
-        executeBatchOperation('delete');
-    });
-
-    // 'all' (初始化時更新全部) 或 'date' (Customer改變時只更新Date)
-    function loadExportFilterOptions(updateTarget = 'all') {
-        // 獲取當前 URL 上的搜索參數
-        var searchParams = {};
-        var urlParams = new URLSearchParams(window.location.search);
-        for(var pair of urlParams.entries()) {
-           searchParams[pair[0]] = pair[1]; 
-        }
-        
-        // 獲取 Modal 當前選中的 Customer
-        var currentCustomer = $('#exportCustomer').val();
-        
-        // 準備請求數據
-        var requestData = {
-            search_params: searchParams,
-            modal_filters: {
-                customer: currentCustomer // 將當前選中的 Customer 傳給後端
-            }
-        };
-        
-        var $custSelect = $('#exportCustomer');
-        var $dateSelect = $('#exportAssignDate');
-        
-        // 根據目標設置 Loading 狀態
-        if (updateTarget === 'all') {
-            $custSelect.prop('disabled', true);
-            $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
-        } else if (updateTarget === 'date') {
-            // 如果只更新 Date，保留 Customer 的選擇狀態，只禁用 Date
-            $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
-        }
-        
-        $.ajax({
-            url: '/resources/api/export/options',
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify(requestData),
-            success: function(res) {
-                // 如果是 'all'，重建 Customer 下拉
-                if (updateTarget === 'all') {
-                    $custSelect.empty().append('<option value="ALL">ALL</option>');
-                    res.customers.forEach(function(c) {
-                        // 保持之前選中的值 (雖然初始化通常是 ALL)
-                        var selected = (c === currentCustomer) ? 'selected' : '';
-                        $custSelect.append(`<option value="${c}" ${selected}>${c}</option>`);
-                    });
-                    $custSelect.prop('disabled', false);
-                }
-                
-                // 始終重建 Date 下拉 (因為它依賴 Customer)
-                // 獲取當前選中的 Date，嘗試在刷新後保持 (如果新列表中還有該日期的話)
-                var currentDate = $dateSelect.val(); 
-                
-                $dateSelect.empty().append('<option value="ALL">ALL</option>');
-                res.assigned_dates.forEach(function(d) {
-                    var selected = (d === currentDate) ? 'selected' : '';
-                    $dateSelect.append(`<option value="${d}" ${selected}>${d}</option>`);
-                });
-                $dateSelect.prop('disabled', false);
-            },
-            error: function() {
-                if (updateTarget === 'all') $custSelect.prop('disabled', false);
-                $dateSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
-            }
-        });
-    }
-
-    // 監聽導出範圍切換
-    $('input[name="exportScope"]').change(function() {
-        var scope = $(this).val();
-        var $filterDiv = $('#exportCustomer').closest('.mb-3'); 
-        
-        if (scope === 'search') {
-            $('#exportCustomer, #exportAssignDate').prop('disabled', false);
-            // 切換回 search 模式時，初始化加載所有選項
-            loadExportFilterOptions('all');
-            $filterDiv.removeClass('opacity-50');
-        } else {
-            $('#exportCustomer, #exportAssignDate').prop('disabled', true).val('ALL');
-            $filterDiv.addClass('opacity-50');
-        }
-        
-        // 聯動勾選欄位邏輯... (保持不變)
-        $('.column-item[data-col="Customer"] .col-checkbox').prop('checked', false);
-        $('.column-item[data-col="Assign Date"] .col-checkbox').prop('checked', false);
-        updateSelectAllColumnsState();
-    });
-
-    // [修改] 監聽導出 Modal 打開事件
-    $('#exportModal').on('show.bs.modal', function() {
-        if ($('#scopeSearch').is(':checked')) {
-            // 初始化打開時，加載全部
-            loadExportFilterOptions('all');
-        } else {
-             $('#exportCustomer, #exportAssignDate').prop('disabled', true);
-             $('#exportCustomer').closest('.mb-3').addClass('opacity-50');
-        }
-    });
-
-    // 當用戶在 Modal 裡改變 Customer 時，觸發後端查詢以更新 Date
-    $('#exportCustomer').change(function() {
-        var val = $(this).val();
-        
-        // 1. 更新 Date 下拉選單 (只更新 Date)
-        loadExportFilterOptions('date');
-
-        // 2. 原有的自動勾選欄位邏輯
-        var targetCols = ['Customer', 'Assign Date'];
-        if (val !== 'ALL') {
-            targetCols.forEach(col => {
-                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', true);
-            });
-        } else {
-            // 如果切回 ALL，可以選擇取消勾選，或者保持勾選，視需求而定
-            // 這裡保持原邏輯：切回 ALL 則取消勾選
-            targetCols.forEach(col => {
-                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', false);
-            });
-        }
-        updateSelectAllColumnsState();
-    });
-
-    // --- 導出模態框邏輯 ---
-    // (導出相關的代碼保持不變，因為它們不涉及這些修改)
-    // 初始化欄位列表
     function initColumnList() {
         var container = $('#columnList');
         container.empty();
-        
         availableColumns.forEach(function(col) {
             var isChecked = defaultCheckedCols.includes(col);
-            var item = `
-                <div class="column-item" data-col="${col}">
-                    <div>
-                        <i class="bi bi-grip-vertical column-handle"></i>
-                        <input type="checkbox" class="form-check-input me-2 col-checkbox" ${isChecked ? 'checked' : ''}>
-                        <span>${col}</span>
-                    </div>
-                    <div class="column-actions btn-group">
-                        <button type="button" class="btn btn-sm btn-light border btn-up" title="Up"><i class="bi bi-chevron-up"></i></button>
-                        <button type="button" class="btn btn-sm btn-light border btn-down" title="Down"><i class="bi bi-chevron-down"></i></button>
-                    </div>
-                </div>
-            `;
+            var item = `<div class="column-item" data-col="${col}"><div><i class="bi bi-grip-vertical column-handle"></i><input type="checkbox" class="form-check-input me-2 col-checkbox" ${isChecked ? 'checked' : ''}><span>${col}</span></div><div class="column-actions btn-group"><button type="button" class="btn btn-sm btn-light border btn-up" title="Up"><i class="bi bi-chevron-up"></i></button><button type="button" class="btn btn-sm btn-light border btn-down" title="Down"><i class="bi bi-chevron-down"></i></button></div></div>`;
             container.append(item);
         });
         updateSelectAllColumnsState();
     }
-    
     initColumnList();
 
-    // 監聽 Customer 下拉選單變化 (導出)
-    $('#exportCustomer').change(function() {
-        var val = $(this).val();
-        var targetCols = ['Customer', 'Assign Date'];
-        
-        if (val !== 'ALL') {
-            targetCols.forEach(col => {
-                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', true);
-            });
-        } else {
-            targetCols.forEach(col => {
-                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', false);
-            });
-        }
-        updateSelectAllColumnsState();
-    });
+    $('#selectAllColumns').change(function() { var isChecked = $(this).is(':checked'); $('.col-checkbox').prop('checked', isChecked); });
+    $(document).on('change', '.col-checkbox', function() { updateSelectAllColumnsState(); });
+    function updateSelectAllColumnsState() { var all = $('.col-checkbox').length; var checked = $('.col-checkbox:checked').length; $('#selectAllColumns').prop('checked', all > 0 && all === checked); $('#selectAllColumns').prop('indeterminate', checked > 0 && checked < all); }
 
-    // 監聽欄位全選
-    $('#selectAllColumns').change(function() {
-        var isChecked = $(this).is(':checked');
-        $('.col-checkbox').prop('checked', isChecked);
-    });
-    
-    $(document).on('change', '.col-checkbox', function() {
-        updateSelectAllColumnsState();
-    });
-    
-    function updateSelectAllColumnsState() {
-        var all = $('.col-checkbox').length;
-        var checked = $('.col-checkbox:checked').length;
-        $('#selectAllColumns').prop('checked', all > 0 && all === checked);
-        $('#selectAllColumns').prop('indeterminate', checked > 0 && checked < all);
-    }
+    $(document).on('click', '.btn-up', function() { var item = $(this).closest('.column-item'); var prev = item.prev('.column-item'); if (prev.length) item.insertBefore(prev); });
+    $(document).on('click', '.btn-down', function() { var item = $(this).closest('.column-item'); var next = item.next('.column-item'); if (next.length) item.insertAfter(next); });
 
-    // 欄位排序
-    $(document).on('click', '.btn-up', function() {
-        var item = $(this).closest('.column-item');
-        var prev = item.prev('.column-item');
-        if (prev.length) item.insertBefore(prev);
-    });
-
-    $(document).on('click', '.btn-down', function() {
-        var item = $(this).closest('.column-item');
-        var next = item.next('.column-item');
-        if (next.length) item.insertAfter(next);
-    });
-
-    // 執行導出
     $('#btnExecuteExport').click(function() {
         var scope = $('input[name="exportScope"]:checked').val();
-        
-        if (scope === 'selected' && selectedResourceIds.length === 0) {
-            alert("請先選擇至少一個項目！");
-            return;
-        }
-
+        if (scope === 'selected' && selectedResourceIds.length === 0) { alert("請先選擇至少一個項目！"); return; }
         var selectedColumns = [];
-        $('#columnList .column-item').each(function() {
-            if ($(this).find('input[type="checkbox"]').is(':checked')) {
-                selectedColumns.push($(this).data('col'));
-            }
-        });
-
-        if (selectedColumns.length === 0) {
-            alert("請至少選擇一個導出欄位！");
-            return;
-        }
-
+        $('#columnList .column-item').each(function() { if ($(this).find('input[type="checkbox"]').is(':checked')) { selectedColumns.push($(this).data('col')); } });
+        if (selectedColumns.length === 0) { alert("請至少選擇一個導出欄位！"); return; }
         var searchParams = {};
         var urlParams = new URLSearchParams(window.location.search);
-        for(var pair of urlParams.entries()) {
-           searchParams[pair[0]] = pair[1]; 
-        }
-
-        var payload = {
-            scope: scope,
-            selected_ids: selectedResourceIds,
-            search_params: searchParams,
-            filter_customer: $('#exportCustomer').val(),
-            filter_assigned_date: $('#exportAssignDate').val(),
-            columns: selectedColumns
-        };
-
+        for(var pair of urlParams.entries()) { searchParams[pair[0]] = pair[1]; }
+        var payload = { scope: scope, selected_ids: selectedResourceIds, search_params: searchParams, filter_customer: $('#exportCustomer').val(), filter_assigned_date: $('#exportAssignDate').val(), columns: selectedColumns };
         var btn = $(this);
         var originalText = btn.html();
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 導出中...');
-
-        fetch('/resources/api/export_custom', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (response.ok) return response.blob();
-            return response.json().then(json => { throw new Error(json.error || '導出失敗') });
-        })
-        .then(blob => {
-            var url = window.URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            var filename = 'sim_resources_export_' + new Date().toISOString().slice(0,19).replace(/[-:T]/g,'') + '.xlsx';
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            $('#exportModal').modal('hide');
-        })
-        .catch(error => {
-            alert('錯誤: ' + error.message);
-        })
-        .finally(() => {
-            btn.prop('disabled', false).html(originalText);
-        });
+        fetch('/resources/api/export_custom', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+        .then(response => { if (response.ok) return response.blob(); return response.json().then(json => { throw new Error(json.error || '導出失敗') }); })
+        .then(blob => { var url = window.URL.createObjectURL(blob); var a = document.createElement('a'); a.href = url; var filename = 'sim_resources_export_' + new Date().toISOString().slice(0,19).replace(/[-:T]/g,'') + '.xlsx'; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); $('#exportModal').modal('hide'); })
+        .catch(error => { alert('錯誤: ' + error.message); })
+        .finally(() => { btn.prop('disabled', false).html(originalText); });
     });
 
-    // --- 其他現有邏輯 (Provider/CardType聯動, 編輯, 刪除, 導入等) 保持不變 ---
-    $('#provider').change(function() {
-        updateResourceTypes($(this).val());
+    // 新增/編輯資源 Modal 的聯動
+    $('#provider').change(function() { 
+        updateResourceTypes($(this).val(), '#resourcesType', '請選擇資源類型'); 
     });
     
+    // 批量操作 Modal 的聯動
+    $('#opsProvider').change(function() { 
+        // 這裡預設文字使用 "(不修改)"
+        updateResourceTypes($(this).val(), '#opsResourcesType', '(不修改)'); 
+    });
+
     $('#cardType').change(function() {
         const type = $(this).val();
         $('.softprofile-fields, .esim-fields').addClass('d-none');
         $('#ki, #opc, #lpa').removeAttr('required');
-        if (type === 'Soft Profile') {
-            $('.softprofile-fields').removeClass('d-none');
-            $('#ki, #opc').attr('required', true);
-        } else if (type === 'eSIM') {
-            $('.esim-fields').removeClass('d-none');
-            $('#lpa').attr('required', true);
-        }
+        if (type === 'Soft Profile') { $('.softprofile-fields').removeClass('d-none'); $('#ki, #opc').attr('required', true); }
+        else if (type === 'eSIM') { $('.esim-fields').removeClass('d-none'); $('#lpa').attr('required', true); }
     });
 
-$('#saveResourceBtn').click(function() {
+    $('#saveResourceBtn').click(function() {
         const data = {
-            Provider: $('#provider').val().trim(),
-            CardType: $('#cardType').val().trim(),
-            ResourcesType: $('#resourcesType').val().trim(),
-            Batch: $('#batch').val().trim(),
-            ReceivedDate: $('#receivedDate').val().trim(),
-            IMSI: $('#imsi').val().trim(),
-            ICCID: $('#iccid').val().trim(),
-            MSISDN: $('#msisdn').val().trim(),
-            Ki: $('#ki').val().trim(),
-            OPC: $('#opc').val().trim(),
-            LPA: $('#lpa').val().trim(),
-            PIN1: $('#pin1').val().trim(),
-            PUK1: $('#puk1').val().trim(),
-            PIN2: $('#pin2').val().trim(),
-            PUK2: $('#puk2').val().trim(),
-            Remark: $('#remark').val().trim()
+            Provider: $('#provider').val().trim(), CardType: $('#cardType').val().trim(), ResourcesType: $('#resourcesType').val().trim(),
+            Batch: $('#batch').val().trim(), ReceivedDate: $('#receivedDate').val().trim(), IMSI: $('#imsi').val().trim(), ICCID: $('#iccid').val().trim(), MSISDN: $('#msisdn').val().trim(),
+            Ki: $('#ki').val().trim(), OPC: $('#opc').val().trim(), LPA: $('#lpa').val().trim(), PIN1: $('#pin1').val().trim(), PUK1: $('#puk1').val().trim(), PIN2: $('#pin2').val().trim(), PUK2: $('#puk2').val().trim(), Remark: $('#remark').val().trim()
         };
-        
         const editId = $('#editId').val();
         const url = editId ? `/api/edit/${editId}` : '/api/add';
-        
         $.ajax({
-            url: '/resources' + url,
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify(data),
-            success: function(res) {
-                if (res.success) {
-                    $('#addModal').modal('hide');
-                    location.reload();
-                } else {
-                    alert('保存失敗：' + (res.error || '未知錯誤'));
-                }
-            },
-            error: function(err) {
-                const errorMsg = (err.responseJSON && err.responseJSON.error) ? err.responseJSON.error : (err.responseText || '未知錯誤');
-                alert('保存失敗！詳細原因：' + errorMsg);
-            }
+            url: '/resources' + url, method: 'POST', contentType: 'application/json', data: JSON.stringify(data),
+            success: function(res) { if (res.success) { $('#addModal').modal('hide'); location.reload(); } else { alert('保存失敗：' + (res.error || '未知錯誤')); } },
+            error: function(err) { const errorMsg = (err.responseJSON && err.responseJSON.error) ? err.responseJSON.error : (err.responseText || '未知錯誤'); alert('保存失敗！詳細原因：' + errorMsg); }
         });
     });
 
@@ -1970,268 +1650,96 @@ $('#saveResourceBtn').click(function() {
         $('#editId').val($(this).data('id'));
         const provider = $(this).data('provider');
         $('#provider').val(provider);
-        updateResourceTypes(provider, $(this).data('resourcestype'));
+        updateResourceTypes(provider, '#resourcesType', '請選擇資源類型', $(this).data('resourcestype'));
         $('#cardType').val($(this).data('cardtype')).trigger('change');
         $('#batch').val($(this).data('batch'));
         $('#receivedDate').val($(this).data('receiveddate'));
         $('#imsi').val($(this).data('imsi'));
         $('#iccid').val($(this).data('iccid'));
         $('#msisdn').val($(this).data('msisdn'));
-        
-        // ... (Ki, OPC, LPA 等判斷) ...
-        if ($(this).data('cardtype') === 'Soft Profile') {
-            $('#ki').val($(this).data('ki'));
-            $('#opc').val($(this).data('opc'));
-        } else if ($(this).data('cardtype') === 'eSIM') {
-            $('#lpa').val($(this).data('lpa'));
-        }
-        
-        $('#pin1').val($(this).data('pin1'));
-        $('#puk1').val($(this).data('puk1'));
-        $('#pin2').val($(this).data('pin2'));
-        $('#puk2').val($(this).data('puk2'));
-        $('#remark').val($(this).data('remark'));
-        
+        if ($(this).data('cardtype') === 'Soft Profile') { $('#ki').val($(this).data('ki')); $('#opc').val($(this).data('opc')); }
+        else if ($(this).data('cardtype') === 'eSIM') { $('#lpa').val($(this).data('lpa')); }
+        $('#pin1').val($(this).data('pin1')); $('#puk1').val($(this).data('puk1')); $('#pin2').val($(this).data('pin2')); $('#puk2').val($(this).data('puk2')); $('#remark').val($(this).data('remark'));
         modal.modal('show');
     });
 
     $(document).on('click', '.delete-btn', function() {
         if (confirm('{{ _("confirm_delete") }}')) {
             const id = $(this).data('id');
-            $.post(`/resources/api/delete/${id}`, function() {
-                location.reload();
-            });
+            $.post(`/resources/api/delete/${id}`, function() { location.reload(); });
         }
     });
     
     $('#addModal').on('hidden.bs.modal', function() {
-        $('#resourceForm')[0].reset();
-        $('#editId').val('');
-        $('#modalTitle').text('{{ _("add_resource") }}');
-        $('.softprofile-fields, .esim-fields').addClass('d-none');
-        $('#resourcesType').empty().append('<option value="">請選擇資源類型</option>');
-        $('#remark').val('');
+        $('#resourceForm')[0].reset(); $('#editId').val(''); $('#modalTitle').text('{{ _("add_resource") }}');
+        $('.softprofile-fields, .esim-fields').addClass('d-none'); $('#resourcesType').empty().append('<option value="">請選擇資源類型</option>'); $('#remark').val('');
     });
     
     $('#submitImportBtn').click(function() {
         const formData = new FormData($('#importForm')[0]);
         const btn = $(this);
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 導入中...');
-        
-        // 重置顯示狀態
-        $('#importResult').hide();
-        $('#importDetails').hide();
-        $('#successMessage').hide();
-        $('#errorMessage').hide();
-        $('#warningMessage').hide();
-        
         $.ajax({
-            url: '/resources/api/import',
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
+            url: '/resources/api/import', type: 'POST', data: formData, processData: false, contentType: false,
             success: function(res) {
-                $('#importResult').show();
                 if (res.success) {
-                    $('#successMessage').show().text(res.message);
-                    $('#errorMessage').hide();
-                    
-                    // 如果有重複或錯誤，顯示詳情
-                    if (res.duplicate_count > 0 || res.error_count > 0) {
-                        $('#importDetails').show();
-                        
-                        // 構建重複清單 HTML
-                        if (res.duplicates && res.duplicates.length > 0) {
-                            let dupHtml = '<div class="alert alert-warning"><strong>重複項目 (前50筆) - 已跳過:</strong><ul class="mb-0 small">';
-                            res.duplicates.forEach(d => {
-                                dupHtml += `<li>行 ${d.row}: IMSI=${d.IMSI}, ICCID=${d.ICCID} (${d.reason})</li>`;
-                            });
-                            dupHtml += '</ul></div>';
-                            $('#duplicateList').html(dupHtml);
-                        } else {
-                            $('#duplicateList').empty();
-                        }
-                        
-                        // 構建錯誤清單 HTML
-                        if (res.errors && res.errors.length > 0) {
-                            let errHtml = '<div class="alert alert-danger"><strong>格式錯誤 (前50筆) - 未匯入:</strong><ul class="mb-0 small">';
-                            res.errors.forEach(e => {
-                                errHtml += `<li>${e}</li>`;
-                            });
-                            errHtml += '</ul></div>';
-                            $('#errorList').html(errHtml);
-                        } else {
-                            $('#errorList').empty();
-                        }
-                        
-                        // [修改點] 即使有部分錯誤，也彈窗提示總體結果
-                        alert(res.message + "\n(請查看下方詳細列表)");
-                        
-                        // 這裡可以選擇不自動刷新，讓用戶看清楚錯誤信息，或者設置較長的延遲
-                        // setTimeout(() => location.reload(), 3000); 
-                        
-                    } else {
-                        // [修改點] 完全成功時，直接彈窗提示，用戶點擊確定後再刷新
-                        alert(res.message);
-                        location.reload();
-                    }
+                    if (res.duplicate_count > 0 || res.error_count > 0) { alert(res.message + "\n(請查看下方詳細列表)"); } else { alert(res.message); location.reload(); }
                 }
             },
-            error: function(err) {
-                $('#importResult').show();
-                $('#successMessage').hide();
-                const msg = err.responseJSON ? err.responseJSON.error : '上傳失敗';
-                $('#errorMessage').show().text(msg);
-                
-                // [修改點] 錯誤時也彈窗
-                alert('導入失敗: ' + msg);
-            },
-            complete: function() {
-                btn.prop('disabled', false).text('{{ _("import") }}');
-            }
+            error: function(err) { const msg = err.responseJSON ? err.responseJSON.error : '上傳失敗'; alert('導入失敗: ' + msg); },
+            complete: function() { btn.prop('disabled', false).text('{{ _("import") }}'); }
         });
     });
 
-// --- 庫存概覽功能 ---
     $('#inventoryModal').on('show.bs.modal', function () {
-        // 顯示 Loading，隱藏內容
-        $('#inventoryLoading').show();
-        $('#inventoryContent').hide().empty();
-        
+        $('#inventoryLoading').show(); $('#inventoryContent').hide().empty();
         $.ajax({
-            url: '/resources/api/inventory_stats',
-            type: 'GET',
+            url: '/resources/api/inventory_stats', type: 'GET',
             success: function(res) {
-                var stats = res.stats;
-                var threshold = res.threshold;
-                var html = '';
-                var showZero = $('#showZeroStock').is(':checked');
-                
-                if (Object.keys(stats).length === 0) {
-                    html = '<div class="alert alert-warning text-center">暫無庫存資料</div>';
-                } else {
-                    html += '<div class="accordion" id="inventoryAccordion">';
-                    
-                    var supplierIndex = 0;
-                    var uniqueIdCounter = 0; // 用於生成唯一的 ID
-
+                var stats = res.stats; var threshold = res.threshold; var html = ''; var showZero = $('#showZeroStock').is(':checked');
+                if (Object.keys(stats).length === 0) { html = '<div class="alert alert-warning text-center">暫無庫存資料</div>'; } else {
+                    html += '<div class="accordion" id="inventoryAccordion">'; var supplierIndex = 0; var uniqueIdCounter = 0;
                     for (var supplier in stats) {
                         supplierIndex++;
-                        html += `
-                        <div class="accordion-item border-0 border-bottom">
-                            <h2 class="accordion-header" id="heading${supplierIndex}">
-                                <button class="accordion-button ${supplierIndex === 1 ? '' : 'collapsed'} bg-light text-primary fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${supplierIndex}">
-                                    ${supplier}
-                                </button>
-                            </h2>
-                            <div id="collapse${supplierIndex}" class="accordion-collapse collapse ${supplierIndex === 1 ? 'show' : ''}" data-bs-parent="#inventoryAccordion">
-                                <div class="accordion-body pt-2 pb-2">`;
-                        
-                        // 遍歷 CardType
+                        html += `<div class="accordion-item border-0 border-bottom"><h2 class="accordion-header" id="heading${supplierIndex}"><button class="accordion-button ${supplierIndex === 1 ? '' : 'collapsed'} bg-light text-primary fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${supplierIndex}">${supplier}</button></h2><div id="collapse${supplierIndex}" class="accordion-collapse collapse ${supplierIndex === 1 ? 'show' : ''}" data-bs-parent="#inventoryAccordion"><div class="accordion-body pt-2 pb-2">`;
                         var cardTypes = stats[supplier];
                         for (var cardType in cardTypes) {
-                            html += `<div class="mb-3">
-                                        <div class="badge bg-secondary mb-2">${cardType}</div>
-                                        <ul class="list-group list-group-flush border-start ps-2">`;
-                            
-                            // 遍歷 ResourcesType
+                            html += `<div class="mb-3"><div class="badge bg-secondary mb-2">${cardType}</div><ul class="list-group list-group-flush border-start ps-2">`;
                             var resTypes = cardTypes[cardType];
                             for (var resType in resTypes) {
-                                uniqueIdCounter++;
-                                var dataObj = resTypes[resType];
-                                var count = dataObj.total; // 現在是一個對象，需取 .total
-                                var batches = dataObj.batches || [];
-                                
-                                var alertHtml = '';
-                                
-                                // 狀態標籤
-                                if (count === 0) {
-                                    alertHtml = `<span class="badge bg-light text-muted border">缺貨</span>`;
-                                } else if (count < threshold) {
-                                    alertHtml = `<span class="badge bg-danger">低庫存</span>`;
-                                }
-                                
-                                // 根據數量和開關決定是否顯示 (主行)
-                                var hiddenClass = (count === 0 && !showZero) ? 'd-none' : '';
-                                var textClass = count > 0 ? 'text-dark fw-bold' : 'text-muted';
-                                
-                                // 構建 Batch 詳細列表 HTML
+                                uniqueIdCounter++; var dataObj = resTypes[resType]; var count = dataObj.total; var batches = dataObj.batches || [];
+                                var alertHtml = ''; if (count === 0) { alertHtml = `<span class="badge bg-light text-muted border">缺貨</span>`; } else if (count < threshold) { alertHtml = `<span class="badge bg-danger">低庫存</span>`; }
+                                var hiddenClass = (count === 0 && !showZero) ? 'd-none' : ''; var textClass = count > 0 ? 'text-dark fw-bold' : 'text-muted';
                                 var batchDetailsHtml = '';
                                 if (batches.length > 0) {
                                     batchDetailsHtml = `<div class="collapse mt-2 ps-3 border-start border-2 border-light" id="batches-${uniqueIdCounter}">`;
                                     batches.forEach(function(b) {
-                                        // [修改] 針對 Batch 行的顯示邏輯
-                                        var batchHiddenClass = (b.count === 0 && !showZero) ? 'd-none' : '';
-                                        var batchTextClass = b.count > 0 ? '' : 'text-danger'; // 0 庫存用紅色標示
-
-                                        // [修改] 添加 batch-row 類別，方便統一控制
-                                        batchDetailsHtml += `
-                                            <div class="d-flex justify-content-between align-items-center py-1 text-muted small batch-row ${batchHiddenClass}" data-count="${b.count}">
-                                                <span><i class="bi bi-box-seam me-1"></i> ${b.batch} <span class="text-secondary ms-1">(${b.received_date})</span></span>
-                                                <span class="font-monospace ${batchTextClass}">${b.count}</span>
-                                            </div>`;
+                                        var batchHiddenClass = (b.count === 0 && !showZero) ? 'd-none' : ''; var batchTextClass = b.count > 0 ? '' : 'text-danger';
+                                        batchDetailsHtml += `<div class="d-flex justify-content-between align-items-center py-1 text-muted small batch-row ${batchHiddenClass}" data-count="${b.count}"><span><i class="bi bi-box-seam me-1"></i> ${b.batch} <span class="text-secondary ms-1">(${b.received_date})</span></span><span class="font-monospace ${batchTextClass}">${b.count}</span></div>`;
                                     });
                                     batchDetailsHtml += `</div>`;
                                 }
-
-                                // 構建主行 HTML
-                                var toggleIcon = batches.length > 0 ? 
-                                    `<a class="text-decoration-none text-secondary me-2" data-bs-toggle="collapse" href="#batches-${uniqueIdCounter}" role="button">
-                                        <i class="bi bi-chevron-down"></i>
-                                    </a>` : '';
-
-                                html += `<li class="list-group-item py-2 border-0 inventory-row ${hiddenClass}" data-count="${count}">
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <div class="d-flex align-items-center">
-                                                    ${toggleIcon}
-                                                    <span class="small text-secondary fw-bold">${resType}</span>
-                                                </div>
-                                                <div class="d-flex align-items-center">
-                                                    <span class="${textClass} me-2 fs-6">${count}</span>
-                                                    ${alertHtml}
-                                                </div>
-                                            </div>
-                                            ${batchDetailsHtml}
-                                        </li>`;
+                                var toggleIcon = batches.length > 0 ? `<a class="text-decoration-none text-secondary me-2" data-bs-toggle="collapse" href="#batches-${uniqueIdCounter}" role="button"><i class="bi bi-chevron-down"></i></a>` : '';
+                                html += `<li class="list-group-item py-2 border-0 inventory-row ${hiddenClass}" data-count="${count}"><div class="d-flex justify-content-between align-items-center"><div class="d-flex align-items-center">${toggleIcon}<span class="small text-secondary fw-bold">${resType}</span></div><div class="d-flex align-items-center"><span class="${textClass} me-2 fs-6">${count}</span>${alertHtml}</div></div>${batchDetailsHtml}</li>`;
                             }
-                            html += `   </ul>
-                                    </div>`;
+                            html += `</ul></div>`;
                         }
-                        
-                        html += `   </div>
-                                </div>
-                            </div>`;
+                        html += `</div></div></div>`;
                     }
                     html += '</div>';
                 }
-                
                 $('#inventoryContent').html(html);
             },
-            error: function() {
-                $('#inventoryContent').html('<div class="alert alert-danger">加載失敗，請稍後重試。</div>');
-            },
-            complete: function() {
-                $('#inventoryLoading').hide();
-                $('#inventoryContent').fadeIn();
-            }
+            error: function() { $('#inventoryContent').html('<div class="alert alert-danger">加載失敗，請稍後重試。</div>'); },
+            complete: function() { $('#inventoryLoading').hide(); $('#inventoryContent').fadeIn(); }
         });
     });
     
-    // 監聽 0 庫存顯示開關
     $('#showZeroStock').change(function() {
         var showZero = $(this).is(':checked');
-        
-        // [修改] 同時控制主行 (inventory-row) 和 Batch 行 (batch-row)
         $('.inventory-row, .batch-row').each(function() {
             var count = parseInt($(this).data('count'));
-            if (count === 0) {
-                if (showZero) {
-                    $(this).removeClass('d-none');
-                } else {
-                    $(this).addClass('d-none');
-                }
-            }
+            if (count === 0) { if (showZero) { $(this).removeClass('d-none'); } else { $(this).addClass('d-none'); } }
         });
     }); 
 });

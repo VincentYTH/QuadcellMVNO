@@ -1,43 +1,175 @@
 from datetime import datetime
 import pandas as pd
 import re
-from sqlalchemy import asc, desc, func, case
+import math
+from sqlalchemy import asc, desc, func, case, text
+from sqlalchemy.sql.expression import cast
 from models.sim_resource import SimResource, db
 from config.sim_resource import (
     PROVIDER_OPTIONS, 
     CARD_TYPE_OPTIONS, 
     RESOURCES_TYPE_OPTIONS,
-    LOW_STOCK_THRESHOLD
+    LOW_STOCK_THRESHOLD,
+    PROVIDER_RESOURCES_MAPPING
 )
 
+class PaginationResult:
+    """Helper class to mimic Flask-SQLAlchemy Pagination object for raw/grouped queries"""
+    def __init__(self, items, page, per_page, total):
+        self.items = items
+        self.page = page
+        self.per_page = per_page
+        self.total = total
+        self.pages = int(math.ceil(total / per_page)) if per_page else 0
+        self.has_prev = page > 1
+        self.has_next = page < self.pages
+        self.prev_num = page - 1
+        self.next_num = page + 1
+        
+    def iter_pages(self, left_edge=2, left_current=2, right_current=5, right_edge=2):
+        last = 0
+        for num in range(1, self.pages + 1):
+            if num <= left_edge or \
+               (num > self.page - left_current - 1 and \
+                num < self.page + right_current) or \
+               num > self.pages - right_edge:
+                if last + 1 != num:
+                    yield None
+                yield num
+                last = num
+
 class SimResourceManager:
-    """SIM资源管理核心逻辑"""
     
-    # 从配置文件导入选项
     PROVIDER_OPTIONS = PROVIDER_OPTIONS
     CARD_TYPE_OPTIONS = CARD_TYPE_OPTIONS
     RESOURCES_TYPE_OPTIONS = RESOURCES_TYPE_OPTIONS
     
     @staticmethod
     def get_all_resources(query_params, page=1, per_page=50):
-        """获取SIM资源列表（带搜索和排序）"""
-        # 构建查询
+        """獲取SIM資源列表（單條模式）"""
         query = SimResource.query
         
-        # 应用搜索条件
-        query = SimResourceManager._apply_search_filters(query, query_params)
+        # 應用所有過濾器 (屬性 + ID)
+        query = SimResourceManager._apply_attribute_filters(query, query_params)
+        query = SimResourceManager._apply_id_filters(query, query_params)
         
-        # 应用排序
+        # 應用排序
         query = SimResourceManager._apply_sorting(query, query_params)
         
-        # 分页
         return query.paginate(page=page, per_page=per_page, error_out=False)
+
+    @staticmethod
+    def get_grouped_resources(query_params, page=1, per_page=50):
+        """獲取分組後的資源列表 (按 IMSI 段落模式)"""
+        
+        # 1. 基礎查詢：只應用「屬性」過濾器 (Provider, Batch等)，不應用 ID 過濾器
+        #    這是為了讓 ID 搜索能匹配到整個段落
+        base_query = SimResource.query
+        base_query = SimResourceManager._apply_attribute_filters(base_query, query_params)
+        
+        # 2. 定義分組屬性
+        group_cols = [
+            SimResource.supplier,
+            SimResource.type,
+            SimResource.resources_type,
+            SimResource.batch,
+            SimResource.status,
+            SimResource.customer,
+            SimResource.assigned_date,
+            SimResource.remark
+        ]
+        
+        # 3. Gaps-and-Islands 計算邏輯
+        def safe_cast_diff(col, order_col):
+             # 將字串轉數字進行連續性判斷
+             return case(
+                 (cast(col, db.Text).op("~")('^[0-9]+$'), 
+                  cast(col, db.Numeric) - func.row_number().over(order_by=order_col)),
+                 else_=0
+             )
+
+        # 排序基礎
+        order_col = cast(SimResource.imsi, db.Numeric)
+        
+        # 4. 構建子查詢 (標記 grp_id)
+        subquery = base_query.with_entities(
+            SimResource.id,
+            *group_cols,
+            SimResource.imsi,
+            SimResource.iccid,
+            SimResource.msisdn,
+            SimResource.created_at,
+            SimResource.updated_at,
+            safe_cast_diff(SimResource.imsi, order_col).label('imsi_grp'),
+            safe_cast_diff(SimResource.iccid, order_col).label('iccid_grp'),
+            safe_cast_diff(SimResource.msisdn, order_col).label('msisdn_grp')
+        ).subquery()
+        
+        # 5. 構建聚合查詢
+        group_by_args = [getattr(subquery.c, col.name) for col in group_cols] + \
+                        [subquery.c.imsi_grp, subquery.c.iccid_grp, subquery.c.msisdn_grp]
+        
+        query = db.session.query(
+            func.min(subquery.c.id).label('id'),
+            *[getattr(subquery.c, col.name) for col in group_cols],
+            func.count().label('count'),
+            func.min(subquery.c.imsi).label('start_imsi'),
+            func.max(subquery.c.imsi).label('end_imsi'),
+            func.min(subquery.c.iccid).label('start_iccid'),
+            func.max(subquery.c.iccid).label('end_iccid'),
+            func.min(subquery.c.msisdn).label('start_msisdn'),
+            func.max(subquery.c.msisdn).label('end_msisdn'),
+            func.max(subquery.c.created_at).label('created_at'),
+            func.max(subquery.c.updated_at).label('updated_at'),
+            func.array_agg(subquery.c.id).label('ids_list')
+        ).group_by(*group_by_args)
+        
+        # 6. [重點修改] 在聚合後應用 ID 過濾 (Overlap 邏輯)
+        #    邏輯：段落範圍 (Min~Max) 與 搜索範圍 (Start~End) 是否有重疊
+        #    Overlap 條件: Seg.Min <= Search.End AND Seg.Max >= Search.Start
+        
+        def apply_range_overlap_filter(q, col_min, col_max, search_val):
+            if not search_val:
+                return q
+            
+            val = search_val.strip()
+            start_val, end_val = val, val
+            
+            if '-' in val:
+                parts = val.split('-')
+                if len(parts) == 2:
+                    s, e = parts[0].strip(), parts[1].strip()
+                    if s.isdigit() and e.isdigit():
+                        start_val, end_val = s, e
+            
+            if start_val.isdigit() and end_val.isdigit():
+                # 轉為數字進行比較
+                s_num = int(start_val)
+                e_num = int(end_val)
+                return q.having(
+                    (cast(col_min, db.Numeric) <= e_num) & 
+                    (cast(col_max, db.Numeric) >= s_num)
+                )
+            else:
+                # 非數字則使用模糊匹配 (fallback)
+                return q.having(col_min.ilike(f'%{val}%'))
+
+        query = apply_range_overlap_filter(query, func.min(subquery.c.imsi), func.max(subquery.c.imsi), query_params.get('imsi'))
+        query = apply_range_overlap_filter(query, func.min(subquery.c.iccid), func.max(subquery.c.iccid), query_params.get('iccid'))
+        query = apply_range_overlap_filter(query, func.min(subquery.c.msisdn), func.max(subquery.c.msisdn), query_params.get('msisdn'))
+        
+        # 7. 排序 (強制按 Start IMSI ASC)
+        query = query.order_by(asc('start_imsi'))
+        
+        # 8. 分頁
+        total_count = query.count()
+        items = query.limit(per_page).offset((page - 1) * per_page).all()
+        
+        return PaginationResult(items, page, per_page, total_count)
     
     @staticmethod
-    def _apply_search_filters(query, params):
-        """應用搜尋過濾器 (增強版)"""
-        
-        # 1. 精確/模糊匹配欄位
+    def _apply_attribute_filters(query, params):
+        """應用非 ID 類屬性過濾器 (Provider, Type, Status 等)"""
         if params.get('provider'):
             query = query.filter(SimResource.supplier.ilike(f'%{params["provider"]}%'))
         if params.get('card_type'):
@@ -49,17 +181,13 @@ class SimResourceManager:
         if params.get('received_date'):
             query = query.filter(SimResource.received_date.ilike(f'%{params["received_date"]}%'))
             
-        # 2. 新增欄位搜尋
         if params.get('status'):
-            query = query.filter(SimResource.status == params['status'])  # 精確匹配
-            
+            query = query.filter(SimResource.status == params['status'])
         if params.get('customer'):
-            query = query.filter(SimResource.customer == params["customer"]) # 精確匹配
-            
+            query = query.filter(SimResource.customer == params["customer"])
         if params.get('remark'):
             query = query.filter(SimResource.remark.ilike(f'%{params["remark"]}%'))    
             
-        # 3. 分配日期範圍搜尋
         start_date = params.get('assigned_date_start')
         end_date = params.get('assigned_date_end')
         if start_date and end_date:
@@ -68,12 +196,14 @@ class SimResourceManager:
             query = query.filter(SimResource.assigned_date >= start_date)
         elif end_date:
             query = query.filter(SimResource.assigned_date <= end_date)
-
-        # 4. 段落搜尋 (IMSI, ICCID, MSISDN)
-        def apply_range_or_like(q, field, value):
-            if not value:
-                return q
             
+        return query
+
+    @staticmethod
+    def _apply_id_filters(query, params):
+        """應用 ID 類過濾器 (IMSI, ICCID, MSISDN) - 用於單條模式"""
+        def apply_range_or_like(q, field, value):
+            if not value: return q
             value = value.strip()
             if '-' in value:
                 parts = value.split('-')
@@ -81,63 +211,51 @@ class SimResourceManager:
                     start, end = parts[0].strip(), parts[1].strip()
                     if start.isdigit() and end.isdigit():
                         return q.filter(field >= start, field <= end)
-            
             return q.filter(field.ilike(f'%{value}%'))
 
         query = apply_range_or_like(query, SimResource.imsi, params.get('imsi'))
         query = apply_range_or_like(query, SimResource.iccid, params.get('iccid'))
         query = apply_range_or_like(query, SimResource.msisdn, params.get('msisdn'))
-            
+        return query
+
+    @staticmethod
+    def _apply_search_filters(query, params):
+        """兼容舊代碼的入口 (如果還有其他地方調用)"""
+        query = SimResourceManager._apply_attribute_filters(query, params)
+        query = SimResourceManager._apply_id_filters(query, params)
         return query
     
+    # ... (其他方法 _apply_sorting, get_options 等保持不變) ...
+    # 請確保保留 validate_resource_data, create_resource 等所有現有方法
     @staticmethod
     def _apply_sorting(query, params):
-        """应用排序"""
-        from sqlalchemy import asc, desc
-        
         sort_field = params.get('sort', 'updated_at')
         sort_order = params.get('order', 'desc')
-        
-        valid_fields = ['supplier', 'type', 'resources_type', 'batch', 
-                       'received_date', 'imsi', 'iccid', 'msisdn', 
-                       'customer', 'assigned_date', 'status',
-                       'created_at', 'updated_at']
-        
-        if sort_field not in valid_fields:
-            sort_field = 'updated_at'
-        
-        if sort_order == 'asc':
-            return query.order_by(asc(getattr(SimResource, sort_field)))
-        else:
-            return query.order_by(desc(getattr(SimResource, sort_field)))
-    
+        valid_fields = ['supplier', 'type', 'resources_type', 'batch', 'received_date', 'imsi', 'iccid', 'msisdn', 'customer', 'assigned_date', 'status', 'created_at', 'updated_at']
+        if sort_field not in valid_fields: sort_field = 'updated_at'
+        if sort_order == 'asc': return query.order_by(asc(getattr(SimResource, sort_field)))
+        else: return query.order_by(desc(getattr(SimResource, sort_field)))
+
     @staticmethod
     def get_options():
-        """获取所有选项数据，合并数据库和配置文件中的值"""
+        """获取所有选项数据"""
         try:
             existing_types = db.session.query(SimResource.type).distinct().all()
             existing_resources = db.session.query(SimResource.resources_type).distinct().all()
-            # 查詢所有已存在的 Customer, Batch, ReceivedDate, AssignedDate
             existing_customers = db.session.query(SimResource.customer).distinct().all()
             existing_batches = db.session.query(SimResource.batch).distinct().all()
             existing_dates = db.session.query(SimResource.received_date).distinct().all()
             existing_assigned_dates = db.session.query(SimResource.assigned_date).distinct().all()
             
-            # 合并、去重並排序
             card_types_set = set([t[0] for t in existing_types if t[0]]) | set(SimResourceManager.CARD_TYPE_OPTIONS)
             resources_types_set = set([t[0] for t in existing_resources if t[0]]) | set(SimResourceManager.RESOURCES_TYPE_OPTIONS)
             
-            # 定義自然排序函數 (解決 1, 10, 2 的問題)
             def natural_keys(text):
                 return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', str(text))]
 
-            # 處理列表
             customers_list = sorted([c[0] for c in existing_customers if c[0] and c[0].strip()])
-            
-            # [修改] 使用自然排序處理 Batch
             raw_batches = [b[0] for b in existing_batches if b[0] and b[0].strip()]
             batches_list = sorted(raw_batches, key=natural_keys)
-            
             dates_list = sorted([d[0] for d in existing_dates if d[0] and d[0].strip()], reverse=True)
             assigned_dates_list = sorted([d[0] for d in existing_assigned_dates if d[0] and d[0].strip()], reverse=True)
             
@@ -145,6 +263,7 @@ class SimResourceManager:
                 'providers': SimResourceManager.PROVIDER_OPTIONS,
                 'card_types': sorted(list(card_types_set)),
                 'resources_types': sorted(list(resources_types_set)),
+                'provider_mapping': PROVIDER_RESOURCES_MAPPING,
                 'customers': customers_list,
                 'batches': batches_list,
                 'received_dates': dates_list,

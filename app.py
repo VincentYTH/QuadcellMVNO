@@ -45,6 +45,14 @@ public_url = None
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:123456@192.168.1.104:5432/sim_management_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# 數據庫連接池配置 (解決 server closed the connection unexpectedly 問題)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,       # 關鍵設置：每次獲取連接前自動檢測有效性
+    'pool_recycle': 3600,        # 每小時自動回收重置連接，防止連接過舊
+    'pool_size': 10,             # 連接池大小
+    'max_overflow': 20           # 當連接池滿時，允許額外創建的連接數
+}
+
 db.init_app(app)
 
 # 注册蓝图

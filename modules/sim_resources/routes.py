@@ -16,6 +16,7 @@ sim_resources_bp = Blueprint('sim_resources', __name__, url_prefix='/resources')
 def resources_page():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
+    view_mode = request.args.get('view_mode', 'single')  # 'single' or 'range'
     
     # 獲取搜索參數
     search_params = {
@@ -40,7 +41,12 @@ def resources_page():
         'per_page': per_page
     }
     
-    resources = SimResourceManager.get_all_resources(search_params, page, per_page)
+    # 根據 view_mode 調用不同的查詢方法
+    if view_mode == 'range':
+        resources = SimResourceManager.get_grouped_resources(search_params, page, per_page)
+    else:
+        resources = SimResourceManager.get_all_resources(search_params, page, per_page)
+        
     options = SimResourceManager.get_options()
     
     return render_template('resources.html', 
@@ -48,6 +54,7 @@ def resources_page():
                           pagination=resources,
                           options=options,
                           search_params=search_params,
+                          view_mode=view_mode,
                           full_width=True)
 
 # 编辑资源路由
