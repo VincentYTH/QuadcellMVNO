@@ -107,6 +107,34 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    /* Remark 標題樣式 - 提示可點擊 */
+    .remark-header-clickable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+        position: relative;
+    }    
+    .remark-header-clickable:hover {
+        background-color: #f0f0f0;
+        color: #0d6efd; /* hover 時變色提示 */
+    }
+    /* 默認 Remark 單元格樣式 (限制長度) */
+    .remark-cell {
+        max-width: 150px; 
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: all 0.3s ease; /* 添加過渡動畫 */
+    }
+    /* 展開模式下的樣式 */
+    /* 當表格擁有 .show-full-remark 類時應用此樣式 */
+    .table.show-full-remark .remark-cell {
+        white-space: normal;       /* 允許換行 */
+        word-break: break-word;    /* 長單詞換行 */
+        overflow: visible;         /* 顯示全部內容 */
+        text-overflow: clip;       /* 移除省略號 */
+        max-width: 300px;          /* 適當放寬寬度，利用行高展示內容 */
+    }
 </style>
 {% endblock %}
 
@@ -367,7 +395,10 @@
                     {% endif %}
                 </th>
                 
-                <th>Remark</th> 
+                <th class="remark-header-clickable" onclick="toggleRemarkMode(this)" title="點擊切換顯示完整內容">
+                    Remark 
+                    <i class="bi bi-arrows-expand ms-1" id="remarkToggleIcon"></i>
+                </th>
                 
                 <th class="sortable-header" onclick="sortTable('created_at')">
                     Create Time
@@ -1070,6 +1101,26 @@ function sortTable(field) {
     window.location.href = `?${params.toString()}`;
 }
 
+// 切換 Remark 顯示模式
+function toggleRemarkMode(header) {
+    var table = document.querySelector('table');
+    var icon = header.querySelector('#remarkToggleIcon');
+    
+    // 切換表格上的類
+    table.classList.toggle('show-full-remark');
+    
+    // 切換圖標
+    if (table.classList.contains('show-full-remark')) {
+        icon.classList.remove('bi-arrows-expand');
+        icon.classList.add('bi-arrows-collapse');
+        // header.style.width = "300px"; // 可選：直接鎖定標題寬度
+    } else {
+        icon.classList.remove('bi-arrows-collapse');
+        icon.classList.add('bi-arrows-expand');
+        // header.style.width = "auto";
+    }
+}
+
 // 清空過濾器
 function clearFilter(field) {
     const params = new URLSearchParams(window.location.search);
@@ -1586,8 +1637,8 @@ $(document).ready(function() {
         executeBatchOperation('delete');
     });
 
-    // [新增] 加載導出過濾器的函數
-    function loadExportFilterOptions() {
+    // 'all' (初始化時更新全部) 或 'date' (Customer改變時只更新Date)
+    function loadExportFilterOptions(updateTarget = 'all') {
         // 獲取當前 URL 上的搜索參數
         var searchParams = {};
         var urlParams = new URLSearchParams(window.location.search);
@@ -1595,75 +1646,117 @@ $(document).ready(function() {
            searchParams[pair[0]] = pair[1]; 
         }
         
-        // 顯示加載狀態
+        // 獲取 Modal 當前選中的 Customer
+        var currentCustomer = $('#exportCustomer').val();
+        
+        // 準備請求數據
+        var requestData = {
+            search_params: searchParams,
+            modal_filters: {
+                customer: currentCustomer // 將當前選中的 Customer 傳給後端
+            }
+        };
+        
         var $custSelect = $('#exportCustomer');
         var $dateSelect = $('#exportAssignDate');
-        $custSelect.html('<option>Loading...</option>').prop('disabled', true);
-        $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
+        
+        // 根據目標設置 Loading 狀態
+        if (updateTarget === 'all') {
+            $custSelect.prop('disabled', true);
+            $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
+        } else if (updateTarget === 'date') {
+            // 如果只更新 Date，保留 Customer 的選擇狀態，只禁用 Date
+            $dateSelect.html('<option>Loading...</option>').prop('disabled', true);
+        }
         
         $.ajax({
             url: '/resources/api/export/options',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify(searchParams),
+            data: JSON.stringify(requestData),
             success: function(res) {
-                // 重建 Customer 下拉
-                $custSelect.empty().append('<option value="ALL">ALL</option>');
-                res.customers.forEach(function(c) {
-                    $custSelect.append(`<option value="${c}">${c}</option>`);
-                });
+                // 如果是 'all'，重建 Customer 下拉
+                if (updateTarget === 'all') {
+                    $custSelect.empty().append('<option value="ALL">ALL</option>');
+                    res.customers.forEach(function(c) {
+                        // 保持之前選中的值 (雖然初始化通常是 ALL)
+                        var selected = (c === currentCustomer) ? 'selected' : '';
+                        $custSelect.append(`<option value="${c}" ${selected}>${c}</option>`);
+                    });
+                    $custSelect.prop('disabled', false);
+                }
                 
-                // 重建 Date 下拉
+                // 始終重建 Date 下拉 (因為它依賴 Customer)
+                // 獲取當前選中的 Date，嘗試在刷新後保持 (如果新列表中還有該日期的話)
+                var currentDate = $dateSelect.val(); 
+                
                 $dateSelect.empty().append('<option value="ALL">ALL</option>');
                 res.assigned_dates.forEach(function(d) {
-                    $dateSelect.append(`<option value="${d}">${d}</option>`);
+                    var selected = (d === currentDate) ? 'selected' : '';
+                    $dateSelect.append(`<option value="${d}" ${selected}>${d}</option>`);
                 });
-                
-                $custSelect.prop('disabled', false);
                 $dateSelect.prop('disabled', false);
             },
             error: function() {
-                $custSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
+                if (updateTarget === 'all') $custSelect.prop('disabled', false);
                 $dateSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
             }
         });
     }
 
-    // [修改] 監聽導出範圍切換
+    // 監聽導出範圍切換
     $('input[name="exportScope"]').change(function() {
         var scope = $(this).val();
-        var $filterDiv = $('#exportCustomer').closest('.mb-3'); // 獲取包含篩選器的容器
+        var $filterDiv = $('#exportCustomer').closest('.mb-3'); 
         
         if (scope === 'search') {
-            // 切換到搜索結果模式：啟用篩選器並加載選項
             $('#exportCustomer, #exportAssignDate').prop('disabled', false);
-            // 加載針對當前搜索結果的選項
-            loadExportFilterOptions();
-            // 視覺上恢復正常
+            // 切換回 search 模式時，初始化加載所有選項
+            loadExportFilterOptions('all');
             $filterDiv.removeClass('opacity-50');
         } else {
-            // 切換到已選模式：禁用篩選器 (因為是對特定ID導出，再篩選意義不大且邏輯複雜)
             $('#exportCustomer, #exportAssignDate').prop('disabled', true).val('ALL');
-            // 視覺上變灰
             $filterDiv.addClass('opacity-50');
         }
         
-        // 重置選中狀態 (如果切換模式，最好重置一下自動勾選)
+        // 聯動勾選欄位邏輯... (保持不變)
         $('.column-item[data-col="Customer"] .col-checkbox').prop('checked', false);
         $('.column-item[data-col="Assign Date"] .col-checkbox').prop('checked', false);
         updateSelectAllColumnsState();
     });
 
-    // [新增] 監聽導出 Modal 打開事件
+    // [修改] 監聽導出 Modal 打開事件
     $('#exportModal').on('show.bs.modal', function() {
-        // 如果當前是 'search' 模式，則加載選項
         if ($('#scopeSearch').is(':checked')) {
-            loadExportFilterOptions();
+            // 初始化打開時，加載全部
+            loadExportFilterOptions('all');
         } else {
-             // 如果是 selected 模式，確保禁用狀態正確
              $('#exportCustomer, #exportAssignDate').prop('disabled', true);
              $('#exportCustomer').closest('.mb-3').addClass('opacity-50');
         }
+    });
+
+    // 當用戶在 Modal 裡改變 Customer 時，觸發後端查詢以更新 Date
+    $('#exportCustomer').change(function() {
+        var val = $(this).val();
+        
+        // 1. 更新 Date 下拉選單 (只更新 Date)
+        loadExportFilterOptions('date');
+
+        // 2. 原有的自動勾選欄位邏輯
+        var targetCols = ['Customer', 'Assign Date'];
+        if (val !== 'ALL') {
+            targetCols.forEach(col => {
+                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', true);
+            });
+        } else {
+            // 如果切回 ALL，可以選擇取消勾選，或者保持勾選，視需求而定
+            // 這裡保持原邏輯：切回 ALL 則取消勾選
+            targetCols.forEach(col => {
+                $(`.column-item[data-col="${col}"] .col-checkbox`).prop('checked', false);
+            });
+        }
+        updateSelectAllColumnsState();
     });
 
     // --- 導出模態框邏輯 ---

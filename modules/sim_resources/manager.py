@@ -54,7 +54,7 @@ class SimResourceManager:
             query = query.filter(SimResource.status == params['status'])  # 精確匹配
             
         if params.get('customer'):
-            query = query.filter(SimResource.customer.ilike(f'%{params["customer"]}%')) # 模糊匹配
+            query = query.filter(SimResource.customer == params["customer"]) # 精確匹配
             
         if params.get('remark'):
             query = query.filter(SimResource.remark.ilike(f'%{params["remark"]}%'))    
@@ -163,20 +163,30 @@ class SimResourceManager:
             }
     
     @staticmethod
-    def get_distinct_filters(params):
-        """獲取當前搜索條件下的唯一 Customer 和 Assigned Date"""
-        query = SimResource.query
+    def get_distinct_filters(params, extra_filters=None):
+        """
+        獲取當前搜索條件下的唯一 Customer 和 Assigned Date
+        params: 頁面上的主要搜索條件
+        extra_filters: Modal 內部的額外篩選 (例如選了 Customer 後要篩選 Date)
+        """
+        # 1. 基礎查詢 (基於頁面搜索條件)
+        base_query = SimResource.query
+        base_query = SimResourceManager._apply_search_filters(base_query, params)
         
-        # 重用現有的搜索過濾邏輯
-        query = SimResourceManager._apply_search_filters(query, params)
-        
-        # 獲取 Customer 清單 (排除空值)
-        customers = query.with_entities(SimResource.customer)\
+        # 2. 獲取 Customer 清單 
+        # (Customer 清單永遠只受頁面搜索影響，不受 Modal 內 Date 選擇影響，否則會變成都選不到)
+        customers = base_query.with_entities(SimResource.customer)\
             .filter(SimResource.customer != None, SimResource.customer != '')\
             .distinct().order_by(SimResource.customer).all()
         
-        # 獲取 Assigned Date 清單 (排除空值，倒序)
-        dates = query.with_entities(SimResource.assigned_date)\
+        # 3. 獲取 Assigned Date 清單
+        # (Date 清單受頁面搜索 + Modal 內選擇的 Customer 影響)
+        date_query = base_query
+        
+        if extra_filters and extra_filters.get('customer') and extra_filters['customer'] != 'ALL':
+            date_query = date_query.filter(SimResource.customer == extra_filters['customer'])
+
+        dates = date_query.with_entities(SimResource.assigned_date)\
             .filter(SimResource.assigned_date != None, SimResource.assigned_date != '')\
             .distinct().order_by(SimResource.assigned_date.desc()).all()
             

@@ -113,9 +113,13 @@ def delete_resource(resource_id):
 @sim_resources_bp.route('/api/export/options', methods=['POST'])
 def get_export_filter_options():
     try:
+        data = request.json
         # 從前端接收當前的搜索參數
-        search_params = request.json
-        options = SimResourceManager.get_distinct_filters(search_params)
+        search_params = data.get('search_params', {})
+        # 接收 Modal 內部的過濾器 (例如已選的 Customer)
+        modal_filters = data.get('modal_filters', {})
+        
+        options = SimResourceManager.get_distinct_filters(search_params, modal_filters)
         return jsonify(options)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
