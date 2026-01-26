@@ -17,6 +17,7 @@ def resources_page():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     view_mode = request.args.get('view_mode', 'single')  # 'single' or 'range'
+    default_sort = 'assigned_date' if view_mode == 'range' else 'updated_at'
     
     # 獲取搜索參數
     search_params = {
@@ -36,7 +37,7 @@ def resources_page():
         'assigned_date_end': request.args.get('assigned_date_end', '').strip(),
         'remark': request.args.get('remark', '').strip(),
         
-        'sort': request.args.get('sort', 'updated_at'),
+        'sort': request.args.get('sort', default_sort),
         'order': request.args.get('order', 'desc'),
         'per_page': per_page
     }

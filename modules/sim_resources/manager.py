@@ -158,9 +158,9 @@ class SimResourceManager:
         query = apply_range_overlap_filter(query, func.min(subquery.c.iccid), func.max(subquery.c.iccid), query_params.get('iccid'))
         query = apply_range_overlap_filter(query, func.min(subquery.c.msisdn), func.max(subquery.c.msisdn), query_params.get('msisdn'))
         
-        # 7. 排序 (強制按 Start IMSI ASC)
-        query = query.order_by(asc('start_imsi'))
-        
+        # 7. 排序 (動態排序邏輯)
+        query = query.order_by(desc('assigned_date').nullslast(), asc('start_imsi'))
+            
         # 8. 分頁
         total_count = query.count()
         items = query.limit(per_page).offset((page - 1) * per_page).all()
@@ -225,16 +225,19 @@ class SimResourceManager:
         query = SimResourceManager._apply_id_filters(query, params)
         return query
     
-    # ... (其他方法 _apply_sorting, get_options 等保持不變) ...
-    # 請確保保留 validate_resource_data, create_resource 等所有現有方法
     @staticmethod
     def _apply_sorting(query, params):
         sort_field = params.get('sort', 'updated_at')
         sort_order = params.get('order', 'desc')
         valid_fields = ['supplier', 'type', 'resources_type', 'batch', 'received_date', 'imsi', 'iccid', 'msisdn', 'customer', 'assigned_date', 'status', 'created_at', 'updated_at']
         if sort_field not in valid_fields: sort_field = 'updated_at'
-        if sort_order == 'asc': return query.order_by(asc(getattr(SimResource, sort_field)))
-        else: return query.order_by(desc(getattr(SimResource, sort_field)))
+        
+        col_attr = getattr(SimResource, sort_field)
+        
+        if sort_order == 'asc':
+            return query.order_by(asc(col_attr).nullslast())
+        else:
+            return query.order_by(desc(col_attr).nullslast())
 
     @staticmethod
     def get_options():

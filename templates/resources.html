@@ -380,11 +380,10 @@
                 </th>
                 
                 {% if view_mode == 'range' %}
-                    <th>Count</th>
                     <th>IMSI Range</th>
                     <th>ICCID Range</th>
                     <th>MSISDN Range</th>
-                {% else %}
+                    <th>Count</th> {% else %}
                     <th class="sortable-header" onclick="sortTable('imsi')">
                         IMSI
                         {% if search_params.sort == 'imsi' %}
@@ -462,36 +461,40 @@
                 <td>{{ res.batch or '' }}</td>
 
                 {% if view_mode == 'range' %}
-                    <td><strong>{{ res.count }}</strong></td>
                     <td class="font-monospace" style="font-size: 1.0rem;">
                         {% if res.start_imsi == res.end_imsi %}
                             {{ res.start_imsi }}
                         {% else %}
-                            {{ res.start_imsi }} ~<br>{{ res.end_imsi }}
+                            {{ res.start_imsi }}-<br>{{ res.end_imsi }}
                         {% endif %}
                     </td>
+                    
                     <td class="font-monospace" style="font-size: 1.0rem;">
                         {% if res.start_iccid %}
                             {% if res.start_iccid == res.end_iccid %}
                                 {{ res.start_iccid }}
                             {% else %}
-                                {{ res.start_iccid }} ~<br>{{ res.end_iccid }}
+                                {{ res.start_iccid }}-<br>{{ res.end_iccid }}
                             {% endif %}
                         {% else %}
                             -
                         {% endif %}
                     </td>
+                    
                     <td class="font-monospace" style="font-size: 1.0rem;">
                         {% if res.start_msisdn %}
                             {% if res.start_msisdn == res.end_msisdn %}
                                 {{ res.start_msisdn }}
                             {% else %}
-                                {{ res.start_msisdn }} ~<br>{{ res.end_msisdn }}
+                                {{ res.start_msisdn }}-<br>{{ res.end_msisdn }}
                             {% endif %}
                         {% else %}
                             -
                         {% endif %}
                     </td>
+
+                    <td><strong>{{ res.count }}</strong></td>
+
                 {% else %}
                     <td>{{ res.imsi or '' }}</td>
                     <td>{{ res.iccid or '' }}</td>
