@@ -86,7 +86,6 @@ def backup_excel(timestamp):
         df = pd.read_sql(query, engine)
         
         # 導出到 Excel (需要 openpyxl 庫)
-        # index=False 表示不導出 pandas 的索引列
         df.to_excel(local_filepath, index=False, engine='openpyxl')
         
         log(f"Excel 備份成功: {filename} (共 {len(df)} 筆數據)")
@@ -135,7 +134,7 @@ if __name__ == "__main__":
     ensure_dir(LOCAL_BACKUP_DIR)
     
     # 使用相同的時間戳，讓兩個文件容易對應
-    current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    current_timestamp = datetime.now().strftime("%Y%m%d")
     
     # 1. 執行 SQL 備份
     sql_path = backup_sql(current_timestamp)

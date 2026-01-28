@@ -1021,7 +1021,6 @@ LANGUAGES = {
         'add_field': '添加字段',
         'save': '保存',
         'confirm_delete': '確認刪除？',
-        'sim_resources': 'SIM 資源',
         'current_inventory': '目前庫存',
         'total': '總庫存',
         'cards': '張',

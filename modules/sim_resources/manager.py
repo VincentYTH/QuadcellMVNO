@@ -159,8 +159,12 @@ class SimResourceManager:
         query = apply_range_overlap_filter(query, func.min(subquery.c.msisdn), func.max(subquery.c.msisdn), query_params.get('msisdn'))
         
         # 7. 排序 (動態排序邏輯)
-        query = query.order_by(desc('assigned_date').nullslast(), asc('start_imsi'))
-            
+        query = query.order_by(
+            desc('assigned_date').nullslast(),   # 第一優先：分配日期 (新 -> 舊)
+            desc('updated_at').nullslast(),      # 第二優先：更新時間 (新 -> 舊)
+            asc('start_imsi')                    # 第三優先：起始 IMSI (小 -> 大)
+        )
+        
         # 8. 分頁
         total_count = query.count()
         items = query.limit(per_page).offset((page - 1) * per_page).all()
