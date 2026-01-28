@@ -47,9 +47,9 @@
     }
   },
   "providers": [
+    "CUHK",
     "CHKT",
     "CTG",
-    "CUHK",
     "Montnet"
   ],
   "resources_types": [

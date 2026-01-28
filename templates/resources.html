@@ -688,9 +688,11 @@
                                     <label class="form-label">Quantity</label>
                                     <input type="number" class="form-control" id="assignQty" min="1" required>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-4">
                                     <label class="form-label">&nbsp;</label>
-                                    <button type="button" class="btn btn-primary w-100" id="btnCalculate">Check & Calculate</button>
+                                    <button type="button" class="btn btn-primary w-100 text-nowrap" id="btnCalculate">
+                                        Check & Calculate
+                                    </button>
                                 </div>
                             </div>
 
@@ -927,18 +929,39 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> 
-                    {{ _('import_tip') }}
-                    <div class="mt-3">
-                        <a href="/api/template/sim_resources" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-download"></i> 下載導入模板
-                        </a>
-                    </div>
-                </div>
                 <form id="importForm" enctype="multipart/form-data">
                     <div class="mb-3">
-                        <label for="importFile" class="form-label">{{ _('choose_file') }}</label>
+                        <label class="form-label fw-bold">1. 選擇操作模式</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="importMode" id="modeAdd" value="add" checked>
+                                <label class="form-check-label" for="modeAdd">
+                                    <i class="bi bi-file-earmark-plus text-primary"></i> 新增全新資源
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="importMode" id="modeModify" value="modify">
+                                <label class="form-check-label" for="modeModify">
+                                    <i class="bi bi-file-earmark-arrow-up text-warning"></i> 修改現有資源
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info py-2" id="importTipArea">
+                        <span id="tipText"></span>
+                        <div class="mt-2">
+                            <a href="/resources/api/template/SIM_Resource_Template.xlsx" class="btn btn-sm btn-outline-primary" id="btnDlAddTemplate">
+                                <i class="bi bi-download"></i> 下載【新增】模板
+                            </a>
+                            <a href="/resources/api/template/SIM_Resource_Modify_Template.xlsx" class="btn btn-sm btn-outline-primary" id="btnDlModifyTemplate" style="display:none;">
+                                <i class="bi bi-download"></i> 下載【修改】模板
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="importFile" class="form-label fw-bold">2. 選擇 Excel 文件</label>
                         <input type="file" class="form-control" id="importFile" name="file" accept=".xlsx,.xls" required>
                     </div>
                 </form>
@@ -1514,28 +1537,69 @@ function renderConfigUI() {
     $('#cfgLowStock').val(globalConfig.low_stock_threshold);
 }
 
-// 渲染簡單列表 (Provider, CardType, ResType)
+// 渲染簡單列表 (含排序功能)
 function renderSimpleList(configKey, listId, checkCategory) {
     const list = $(`#${listId}`);
     list.empty();
     
-    (globalConfig[configKey] || []).forEach(item => {
+    const items = globalConfig[configKey] || [];
+    
+    items.forEach((item, index) => {
+        // 判斷是否為第一個或最後一個，以禁用對應按鈕
+        const isFirst = index === 0;
+        const isLast = index === items.length - 1;
+        
         const li = $(`
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>${item}</span>
-                <button class="btn btn-sm btn-outline-danger btn-delete-cfg" data-val="${item}">
-                    <i class="bi bi-trash"></i>
-                </button>
+            <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                <span class="fw-bold text-dark">${item}</span>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-secondary btn-move-up" title="上移" ${isFirst ? 'disabled' : ''}>
+                        <i class="bi bi-arrow-up"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary btn-move-down" title="下移" ${isLast ? 'disabled' : ''}>
+                        <i class="bi bi-arrow-down"></i>
+                    </button>
+                    <button class="btn btn-outline-danger btn-delete-cfg ms-1" data-val="${item}" title="刪除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
             </li>
         `);
         
-        // 綁定刪除事件 (含佔用檢查)
+        // 綁定上移事件
+        li.find('.btn-move-up').click(function() {
+            moveConfigItem(configKey, index, -1);
+        });
+
+        // 綁定下移事件
+        li.find('.btn-move-down').click(function() {
+            moveConfigItem(configKey, index, 1);
+        });
+
+        // 綁定刪除事件
         li.find('.btn-delete-cfg').click(function() {
             checkAndRemoveItem(configKey, item, checkCategory, $(this));
         });
         
         list.append(li);
     });
+}
+
+// 移動配置項順序
+function moveConfigItem(configKey, index, direction) {
+    const items = globalConfig[configKey];
+    const newIndex = index + direction;
+
+    // 邊界檢查
+    if (newIndex < 0 || newIndex >= items.length) return;
+
+    // 交換數組元素位置
+    const temp = items[newIndex];
+    items[newIndex] = items[index];
+    items[index] = temp;
+
+    // 重新渲染界面
+    renderConfigUI();
 }
 
 // 添加項目
@@ -1881,7 +1945,7 @@ $(document).ready(function() {
                 $dateSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
             }
         });
-    }    
+    }   
 
     $('input[name="exportScope"]').change(function() {
         var scope = $(this).val();
@@ -2386,20 +2450,69 @@ $(document).ready(function() {
         $('#resourceForm')[0].reset(); $('#editId').val(''); $('#modalTitle').text('{{ _("add_resource") }}');
         $('.softprofile-fields, .esim-fields').addClass('d-none'); $('#resourcesType').empty().append('<option value="">請選擇資源類型</option>'); $('#remark').val('');
     });
+
+    // === 導入功能相關 JS ===
+    // 1. 監聽模式切換，改變提示文字和下載按鈕
+    $('input[name="importMode"]').change(function() {
+        var mode = $(this).val();
+        
+        if (mode === 'add') {
+            $('#tipText').html('<i class="bi bi-info-circle"></i> 用於批量導入全新的 SIM 資源。如果數據庫中已存在相同的 IMSI/ICCID，則會跳過。');
+            $('#btnDlAddTemplate').show();
+            $('#btnDlModifyTemplate').hide();
+            $('#submitImportBtn').text('導入新增');
+            $('#submitImportBtn').removeClass('btn-warning').addClass('btn-primary');
+        } else {
+            $('#tipText').html('<i class="bi bi-info-circle"></i> 根據 <b>IMSI</b> 修改現有資源數據。<br>主要用作更新或導入Ki/OPC/LPA，留空則保持原值。');
+            $('#btnDlAddTemplate').hide();
+            $('#btnDlModifyTemplate').show();
+            $('#submitImportBtn').text('執行修改');
+            $('#submitImportBtn').removeClass('btn-primary').addClass('btn-warning');
+        }
+    });
+
+    // 初始化一次提示文字
+    $('input[name="importMode"]:checked').trigger('change');
     
+    // 2. 提交導入
     $('#submitImportBtn').click(function() {
+        var fileInput = $('#importFile')[0];
+        if (fileInput.files.length === 0) {
+            alert('請先選擇文件');
+            return;
+        }
+
         const formData = new FormData($('#importForm')[0]);
+        // 手動添加模式參數 (雖然 form 裡有 radio，但 FormData 自動抓取有時需要確保 checked 狀態)
+        var mode = $('input[name="importMode"]:checked').val();
+        formData.append('mode', mode);
+
         const btn = $(this);
-        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 導入中...');
+        const originalText = btn.text();
+        
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 處理中...');
+        
         $.ajax({
-            url: '/resources/api/import', type: 'POST', data: formData, processData: false, contentType: false,
+            url: '/resources/api/import', 
+            type: 'POST', 
+            data: formData, 
+            processData: false, 
+            contentType: false,
             success: function(res) {
                 if (res.success) {
-                    if (res.duplicate_count > 0 || res.error_count > 0) { alert(res.message + "\n(請查看下方詳細列表)"); } else { alert(res.message); location.reload(); }
+                    alert(res.message); 
+                    location.reload(); 
+                } else {
+                    alert('操作失敗: ' + res.message);
                 }
             },
-            error: function(err) { const msg = err.responseJSON ? err.responseJSON.error : '上傳失敗'; alert('導入失敗: ' + msg); },
-            complete: function() { btn.prop('disabled', false).text('{{ _("import") }}'); }
+            error: function(err) { 
+                const msg = err.responseJSON ? err.responseJSON.message : '上傳失敗'; 
+                alert('系統錯誤: ' + msg); 
+            },
+            complete: function() { 
+                btn.prop('disabled', false).text(originalText); 
+            }
         });
     });
 

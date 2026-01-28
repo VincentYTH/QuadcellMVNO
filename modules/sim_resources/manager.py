@@ -210,13 +210,13 @@ class SimResourceManager:
     def get_options():
         """
         獲取所有選項數據
-        Provider/Type/ResType 僅從 JSON 配置讀取 (權威來源), Customer/Batch/Date 仍從 DB 動態讀取 (因為這些是用戶輸入數據)
+        [修改] Provider/Type/ResType 嚴格遵循 JSON 配置的順序，不再強制字母排序
         """
         try:
-            # 1. 加載配置
+            # 1. 加載配置 (這是權威順序)
             config = SimConfigManager.load_config()
             
-            # 2. 僅查詢用戶動態輸入的欄位 (Customer, Batch, Dates)
+            # 2. 查詢用戶動態輸入的欄位 (Customer, Batch, Dates)
             existing_customers = db.session.query(SimResource.customer).distinct().all()
             existing_batches = db.session.query(SimResource.batch).distinct().all()
             existing_dates = db.session.query(SimResource.received_date).distinct().all()
@@ -232,14 +232,13 @@ class SimResourceManager:
             dates_list = sorted([d[0] for d in existing_dates if d[0] and d[0].strip()], reverse=True)
             assigned_dates_list = sorted([d[0] for d in existing_assigned_dates if d[0] and d[0].strip()], reverse=True)
             
+            # 直接返回配置列表
             return {
-                # [核心修改] 這裡不再合併 DB 中的 distinct 值，嚴格遵循 JSON 配置
-                'providers': config.get('providers', []),
-                'card_types': config.get('card_types', []),
-                'resources_types': config.get('resources_types', []),
+                'providers': config.get('providers', []), 
+                'card_types': config.get('card_types', []), 
+                'resources_types': config.get('resources_types', []), 
                 'provider_mapping': config.get('provider_mapping', {}),
                 
-                # 這些仍然來自 DB
                 'customers': customers_list,
                 'batches': batches_list,
                 'received_dates': dates_list,

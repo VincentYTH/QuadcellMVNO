@@ -1,12 +1,12 @@
 LANGUAGES = {
     'en': {
-        'app_name': 'MVNO API Platform',
+        'app_name': 'MVNO Platform',
         'supplier_api': 'Supplier API',
         'quadcell': 'Quadcell',
         'montnet': 'MontNet', 
         'simlessly': 'Simlessly',
         'worldmove': 'WorldMove',
-        'welcome_message': 'Welcome to MVNO API Integration Platform',
+        'welcome_message': 'Welcome to MVNO Integration Platform',
         'platform_description': 'This platform integrates API interfaces from multiple SIM card suppliers, providing a unified interface for operations.',
         'supported_suppliers': 'Supported Suppliers:',
         'sim_management': 'Provides SIM card configuration and management services',
@@ -32,7 +32,7 @@ LANGUAGES = {
         'edit': 'Edit',
         'delete': 'Delete',
         'no_data': 'No data available',
-        'copyright': 'Quadcell MVNO API Integration Platform',
+        'copyright': 'Quadcell MVNO Integration Platform',
         'select_language': 'Select Language',
         
         # Common texts
@@ -342,13 +342,13 @@ LANGUAGES = {
     },
     
     'zh-CN': {
-        'app_name': 'MVNO API整合平台',
+        'app_name': 'MVNO 整合平台',
         'supplier_api': '供应商API',
         'quadcell': 'Quadcell',
         'montnet': 'MontNet',
         'simlessly': 'Simlessly', 
         'worldmove': 'WorldMove',
-        'welcome_message': '欢迎使用MVNO API整合平台',
+        'welcome_message': '欢迎使用MVNO整合平台',
         'platform_description': '本平台整合了多家SIM卡供应商的API接口，提供统一的界面进行操作。',
         'supported_suppliers': '支持的供应商：',
         'sim_management': '提供SIM卡配置和管理服务',
@@ -374,7 +374,7 @@ LANGUAGES = {
         'edit': '编辑',
         'delete': '删除',
         'no_data': '暂无数据',
-        'copyright': 'Quadcell MVNO API集成平台',
+        'copyright': 'Quadcell MVNO 整合平台',
         'select_language': '选择语言',
         
         # Common texts
@@ -661,13 +661,13 @@ LANGUAGES = {
     },
     
     'zh-TW': {
-        'app_name': 'MVNO API整合平台',
+        'app_name': 'MVNO 整合平台',
         'supplier_api': '供應商API',
         'quadcell': 'Quadcell',
         'montnet': 'MontNet',
         'simlessly': 'Simlessly',
         'worldmove': 'WorldMove',
-        'welcome_message': '歡迎使用MVNO API整合平台',
+        'welcome_message': '歡迎使用MVNO整合平台',
         'platform_description': '本平台整合了多家SIM卡供應商的API接口，提供統一的界面進行操作。',
         'supported_suppliers': '支援的供應商：',
         'sim_management': '提供SIM卡配置和管理服務',
@@ -693,7 +693,7 @@ LANGUAGES = {
         'edit': '編輯',
         'delete': '刪除',
         'no_data': '暫無資料',
-        'copyright': 'Quadcell MVNO API整合平台',
+        'copyright': 'Quadcell MVNO 整合平台',
         'select_language': '選擇語言',
         
         # Common texts

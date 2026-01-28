@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, Response, send_file
+from flask import Blueprint, render_template, request, jsonify, Response, send_file, send_from_directory, current_app
 from datetime import datetime
 import pandas as pd
 from io import StringIO
@@ -6,7 +6,6 @@ import csv
 import os
 from .manager import SimResourceManager
 from models.sim_resource import SimResource, db
-from flask import current_app
 from .config_manager import SimConfigManager
 
 sim_resources_bp = Blueprint('sim_resources', __name__, url_prefix='/resources')
@@ -174,168 +173,226 @@ def export_resources():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# SIM Resource Import Excel
+# SIM Resource Import/Modify Excel
 @sim_resources_bp.route('/api/import', methods=['POST'])
 def import_resources():
-    """匯入 SIM 資源 Excel，嚴格按照欄位規則 + 條件必填驗證，支持 Customer 和 Assign Date"""
+    """
+    導入資源接口 (支持 Add 新增 和 Modify 修改)
+    """
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': '未上傳文件'}), 400
+    
+    file = request.files['file']
+    mode = request.form.get('mode', 'add') # 獲取導入模式，默認為新增
+    
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': '沒有上傳檔案'}), 400
+        # 1. 讀取 Excel 通用處理
+        # dtype=str 強制所有內容讀取為字符串 (防止 IMSI/ICCID 前導零丟失)
+        df = pd.read_excel(file, dtype=str)
+        df = df.fillna('') # 將 NaN (空值) 轉換為空字符串
+        df.columns = df.columns.str.strip() # 去除標題前後空格
         
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': '沒有選擇檔案'}), 400
-        
-        if not file.filename.lower().endswith(('.xlsx', '.xls')):
-            return jsonify({'error': '僅支援 Excel 檔案 (.xlsx 或 .xls)'}), 400
+        # ==========================================
+        # 模式 A: 修改現有資源 (Modify)
+        # ==========================================
+        if mode == 'modify':
+            # 1. 驗證必要列
+            if 'IMSI' not in df.columns:
+                 return jsonify({'success': False, 'message': '模板錯誤：必須包含 "IMSI" 列 (Column A)'}), 400
+            
+            # 2. 定義映射關係 (Excel標題 -> DB欄位名)
+            # 僅允許修改這些與安全/卡片參數相關的欄位
+            field_map = {
+                'Ki': 'ki', 
+                'OPC': 'opc', 
+                'LPA': 'lpa',
+                'PIN1': 'pin1', 
+                'PUK1': 'puk1', 
+                'PIN2': 'pin2', 
+                'PUK2': 'puk2'
+            }
+            
+            # 3. 提取 Excel 中的所有 IMSI (用於批量查詢，提升性能)
+            excel_imsis = df['IMSI'].dropna().astype(str).str.strip().tolist()
+            excel_imsis = [i for i in excel_imsis if i] # 過濾掉空字符串
+            
+            if not excel_imsis:
+                return jsonify({'success': False, 'message': 'Excel 中沒有有效的 IMSI 數據'}), 400
 
-        # [修改] 使用 dtype=str 強制所有數據讀取為字符串，防止 '0031' 變成 31.0
-        # keep_default_na=False 會將空單元格讀取為空字符串 '' 而不是 NaN，這樣處理更方便
-        df = pd.read_excel(file, sheet_name=0, dtype=str, keep_default_na=False)
-        
-        if df.empty:
-            return jsonify({'error': '第一張 Sheet 為空'}), 400
-        
-        # 處理 Excel 標題前後可能的空格 (例如 'PIN2 ' -> 'PIN2')
-        df.columns = df.columns.str.strip()
-        
-        required_columns = ['Provider', 'CardType', 'ResourcesType', 'Batch', 'ReceivedDate', 'IMSI', 'ICCID', 'MSISDN']
-        missing_cols = [col for col in required_columns if col not in df.columns]
-        if missing_cols:
-            return jsonify({'error': f'缺少必填欄位: {", ".join(missing_cols)}'}), 400
-        
-        new_count = 0
-        error_rows = []
-        duplicate_count = 0
-        duplicates_details = []
-        
-        existing = db.session.query(SimResource.imsi, SimResource.iccid).all()
-        existing_imsi = {r.imsi for r in existing if r.imsi}
-        existing_iccid = {r.iccid for r in existing if r.iccid}
-        
-        # 定義日期清洗函數
-        def clean_date_str(val):
-            if not val or val.lower() == 'nan':
-                return None
-            # 如果是 "2025-03-31 00:00:00" 這種格式，只取空格前的部分
-            val = val.strip()
-            if ' ' in val:
-                val = val.split(' ')[0]
-            return val
+            # 4. 批量查詢數據庫中存在的資源
+            # 使用 in_ 查詢一次性撈出所有相關記錄，避免在迴圈中頻繁查庫
+            existing_resources = SimResource.query.filter(SimResource.imsi.in_(excel_imsis)).all()
+            
+            # 建立 IMSI -> Resource 對象的映射字典，方便快速查找
+            resource_map = {res.imsi: res for res in existing_resources}
+            
+            updated_count = 0
+            not_found_count = 0
+            ignored_count = 0
+            
+            # 5. 遍歷 Excel 每一行進行更新
+            for _, row in df.iterrows():
+                imsi = str(row['IMSI']).strip()
+                if not imsi: continue
+                
+                if imsi in resource_map:
+                    resource = resource_map[imsi]
+                    has_change = False
+                    
+                    # 遍歷允許修改的欄位
+                    for excel_col, db_col in field_map.items():
+                        if excel_col in df.columns:
+                            val = str(row[excel_col]).strip()
+                            # 關鍵邏輯：只有當 Excel 裡填了值，才修改 DB (非覆蓋式更新)
+                            if val: 
+                                setattr(resource, db_col, val)
+                                has_change = True
+                    
+                    if has_change:
+                        updated_count += 1
+                    else:
+                        ignored_count += 1 # 找到了 IMSI，但該行其他欄位都是空的
+                else:
+                    not_found_count += 1 # 數據庫裡沒這個 IMSI
 
-        for idx, row in df.iterrows():
-            row_num = idx + 2
+            # 6. 提交更改
+            if updated_count > 0:
+                db.session.commit()
+                
+            # 7. 構建返回訊息
+            msg = f"修改處理完成。"
+            details = []
+            if updated_count > 0: details.append(f"• 成功更新: {updated_count} 筆")
+            if not_found_count > 0: details.append(f"• 庫存未找到: {not_found_count} 筆 (IMSI 不存在)")
+            if ignored_count > 0: details.append(f"• 未變更: {ignored_count} 筆 (未填寫修改內容)")
             
-            missing_required = [col for col in required_columns if str(row.get(col, '')).strip() == '']
-            if missing_required:
-                error_rows.append(f"第 {row_num} 行：缺少必填欄位 {', '.join(missing_required)}")
-                continue
-            
-            # 構建數據字典，去除內容前後空格
-            data = {}
-            for col in df.columns:
-                val = row[col]
-                data[col] = str(val).strip()
-            
-            card_type = data.get('CardType', '')
-            
-            validation_error = []
-            if card_type == 'Soft Profile':
-                if not data.get('Ki'): validation_error.append('Ki 必填')
-                if not data.get('OPC'): validation_error.append('OPC 必填')
-            elif card_type == 'eSIM':
-                if not data.get('LPA'): validation_error.append('LPA 必填')
-            elif card_type != 'Physical SIM':
-                validation_error.append(f'CardType 必須是 Physical SIM / eSIM / Soft Profile')
-            
-            if validation_error:
-                error_rows.append(f"第 {row_num} 行（{card_type}）：{', '.join(validation_error)}")
-                continue
-            
-            current_imsi = data.get('IMSI')
-            current_iccid = data.get('ICCID')
-            is_duplicate = False
-            reason = []
-            if current_imsi and current_imsi in existing_imsi:
-                is_duplicate = True
-                reason.append(f"IMSI 重複")
-            if current_iccid and current_iccid in existing_iccid:
-                is_duplicate = True
-                reason.append(f"ICCID 重複")
-            
-            if is_duplicate:
-                duplicate_count += 1
-                duplicates_details.append({
-                    'row': row_num,
-                    'CardType': card_type,
-                    'IMSI': current_imsi,
-                    'ICCID': current_iccid,
-                    'reason': '，'.join(reason)
-                })
-                continue
-            
-            customer = data.get('Customer')
-            
-            # 處理日期格式，確保去掉時間部分
-            raw_assign_date = data.get('Assign Date') or data.get('AssignDate') or data.get('AssignedDate')
-            assign_date = clean_date_str(raw_assign_date)
-            
-            raw_received_date = data.get('ReceivedDate')
-            received_date = clean_date_str(raw_received_date)
+            full_msg = msg + "\n" + "\n".join(details)
+                
+            return jsonify({
+                'success': True, 
+                'message': full_msg,
+                'updated_count': updated_count,
+                'error_count': not_found_count
+            })
 
-            remark = data.get('Remark')
+        # ==========================================
+        # 模式 B: 新增資源 (Add)
+        # ==========================================
+        else:
+            # 1. 驗證必要列
+            required_columns = ['Provider', 'CardType', 'ResourcesType', 'Batch', 'ReceivedDate', 'IMSI', 'ICCID', 'MSISDN']
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            if missing_cols:
+                return jsonify({'success': False, 'message': f'模板錯誤：缺少必要列 {", ".join(missing_cols)}'}), 400
+
+            success_count = 0
+            duplicate_count = 0
+            errors = []
+
+            # 2. 獲取所有 IMSI 和 ICCID 用於預先查重 (性能優化)
+            imsis = df['IMSI'].dropna().astype(str).str.strip().tolist()
+            iccids = df['ICCID'].dropna().astype(str).str.strip().tolist()
             
-            status = 'Available'
-            if customer: 
-                status = 'Assigned'
+            # 查出數據庫中已存在的 IMSI 和 ICCID
+            existing_imsis = set(r[0] for r in db.session.query(SimResource.imsi).filter(SimResource.imsi.in_(imsis)).all())
+            existing_iccids = set(r[0] for r in db.session.query(SimResource.iccid).filter(SimResource.iccid.in_(iccids)).all())
+
+            # 3. 遍歷插入
+            new_resources = []
+            for index, row in df.iterrows():
+                try:
+                    imsi = str(row['IMSI']).strip()
+                    iccid = str(row['ICCID']).strip()
+                    
+                    # 跳過空行
+                    if not imsi or not iccid: continue
+                    
+                    # 查重邏輯
+                    if imsi in existing_imsis or iccid in existing_iccids:
+                        duplicate_count += 1
+                        continue
+                        
+                    # 構建對象
+                    res = SimResource(
+                        supplier=str(row['Provider']).strip(),
+                        type=str(row['CardType']).strip(),
+                        resources_type=str(row['ResourcesType']).strip(),
+                        batch=str(row['Batch']).strip(),
+                        received_date=str(row['ReceivedDate']).strip(),
+                        imsi=imsi,
+                        iccid=iccid,
+                        msisdn=str(row['MSISDN']).strip(),
+                        status='Available', # 默認狀態
+                        
+                        # 可選欄位
+                        ki=str(row.get('Ki', '')).strip() or None,
+                        opc=str(row.get('OPC', '')).strip() or None,
+                        lpa=str(row.get('LPA', '')).strip() or None,
+                        pin1=str(row.get('PIN1', '')).strip() or None,
+                        puk1=str(row.get('PUK1', '')).strip() or None,
+                        pin2=str(row.get('PIN2', '')).strip() or None,
+                        puk2=str(row.get('PUK2', '')).strip() or None,
+                        remark=str(row.get('Remark', '')).strip() or None
+                    )
+                    new_resources.append(res)
+                    
+                    # 簡單的防重機制：把剛加進列表的也算作已存在，防止 Excel 內部有重複
+                    existing_imsis.add(imsi)
+                    existing_iccids.add(iccid)
+                    
+                except Exception as row_err:
+                    errors.append(f"Row {index+2}: {str(row_err)}")
+
+            # 4. 批量寫入
+            if new_resources:
+                # 使用 bulk_save_objects 提升寫入速度
+                db.session.bulk_save_objects(new_resources)
+                db.session.commit()
+                success_count = len(new_resources)
+
+            # 5. 構建返回訊息
+            msg = f"導入完成。"
+            details = []
+            if success_count > 0: details.append(f"• 成功新增: {success_count} 筆")
+            if duplicate_count > 0: details.append(f"• 跳過重複: {duplicate_count} 筆 (IMSI/ICCID 已存在)")
+            if len(errors) > 0: details.append(f"• 數據錯誤: {len(errors)} 筆")
             
-            new_resource = SimResource(
-                type=card_type,
-                supplier=data['Provider'],
-                resources_type=data.get('ResourcesType'),
-                batch=data.get('Batch'),
-                received_date=received_date,
-                imsi=data.get('IMSI'),
-                iccid=data.get('ICCID'),
-                msisdn=data.get('MSISDN'),
-                ki=data.get('Ki') or None,
-                opc=data.get('OPC') or None,
-                lpa=data.get('LPA') or None,
-                pin1=data.get('PIN1') or None,
-                puk1=data.get('PUK1') or None,
-                pin2=data.get('PIN2') or None,
-                puk2=data.get('PUK2') or None,
-                status=status,
-                customer=customer,
-                assigned_date=assign_date,
-                remark=remark
-            )
+            full_msg = msg + "\n" + "\n".join(details)
             
-            db.session.add(new_resource)
-            new_count += 1
-            
-            if current_imsi: existing_imsi.add(current_imsi)
-            if current_iccid: existing_iccid.add(current_iccid)
-        
-        db.session.commit()
-        
-        message = f'匯入完成！成功新增 {new_count} 筆'
-        if duplicate_count > 0: message += f'，{duplicate_count} 筆因重複跳過'
-        if error_rows: message += f'，{len(error_rows)} 筆因格式錯誤未匯入'
-        
-        return jsonify({
-            'success': True,
-            'new_count': new_count,
-            'duplicate_count': duplicate_count,
-            'error_count': len(error_rows),
-            'message': message,
-            'errors': error_rows[:50],
-            'duplicates': duplicates_details[:50]
-        })
-        
+            if len(errors) > 0 and len(errors) < 5:
+                full_msg += "\n\n錯誤詳情:\n" + "\n".join(errors)
+
+            return jsonify({
+                'success': True,
+                'message': full_msg,
+                'success_count': success_count,
+                'duplicate_count': duplicate_count,
+                'error_count': len(errors)
+            })
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'匯入失敗: {str(e)}'}), 500
+        # import traceback
+        # traceback.print_exc()
+        return jsonify({'success': False, 'message': f"文件處理失敗: {str(e)}"}), 500
+
+# 用於下載修改模板的路由
+@sim_resources_bp.route('/api/template/<filename>')
+def download_template(filename):
+    """下載 Excel 模板"""
+    # 假設您的模板存放在 app 根目錄下的 ExcelTemplate 文件夾
+    # 您可能需要根據實際目錄結構調整 directory 參數
+    template_dir = os.path.join(current_app.root_path, 'ExcelTemplate')
+    
+    # 安全檢查，只允許下載特定的模板
+    allowed_templates = ['SIM_Resource_Template.xlsx', 'SIM_Resource_Modify_Template.xlsx']
+    if filename not in allowed_templates:
+        return jsonify({'success': False, 'message': '文件不存在或不允許下載'}), 404
+        
+    try:
+        return send_from_directory(directory=template_dir, path=filename, as_attachment=True)
+    except FileNotFoundError:
+        return jsonify({'success': False, 'message': '服務器上找不到模板文件'}), 404
 
 @sim_resources_bp.route('/api/assign/calculate', methods=['POST'])
 def calculate_assignment():
@@ -565,83 +622,65 @@ def check_config_usage():
 # 批量操作: 按導入IMSI
 @sim_resources_bp.route('/api/batch/resolve_imsis', methods=['POST'])
 def resolve_imsis_for_batch():
-    """解析批量操作導入的 IMSI Excel"""
+    """解析批量操作導入的 IMSI Excel (性能優化版)"""
     if 'file' not in request.files:
         return jsonify({'success': False, 'message': '未上傳文件'}), 400
     
     file = request.files['file']
     try:
-        # 智能讀取 Excel (兼容有無標題)
-        df = pd.read_excel(file, dtype=str)
-        df.columns = df.columns.str.strip() # 去除標題前後空格
+        # 1. 讀取 Excel (只讀取需要的數據)
+        # header=None 先讀取所有內容，稍後判斷
+        df = pd.read_excel(file, header=None, dtype=str)
         
-        target_imsis = []
+        target_series = pd.Series(dtype=str)
         
-        # 策略 A: 尋找名為 'IMSI' (不分大小寫) 的列
-        imsi_col_name = next((col for col in df.columns if str(col).upper() == 'IMSI'), None)
+        # 智能尋找數據列
+        # 嘗試 A: 尋找包含 "IMSI" 字樣的行作為標題
+        # 展平所有數據並轉為字符串，去除空格
+        all_values = df.values.flatten().astype(str)
+        all_values = [x.strip() for x in all_values if x.lower() != 'nan' and x.lower() != 'imsi']
         
-        if imsi_col_name:
-            # 找到了標題，讀取該列
-            target_imsis = df[imsi_col_name].dropna().astype(str).str.strip().tolist()
-        else:
-            # 策略 B: 沒找到標題，嘗試讀取第一列 (Column A) 並檢查數據特徵
-            file.seek(0)
-            # header=None 表示不將第一行作標題
-            df_no_header = pd.read_excel(file, header=None, dtype=str)
-            
-            if not df_no_header.empty:
-                col_a = df_no_header.iloc[:, 0].dropna().astype(str).str.strip()
-                
-                # 檢查前幾行數據特徵 (取前5行樣本)
-                sample = col_a.head(5).tolist()
-                # 判斷樣本中是否包含符合 IMSI 格式 (15位數字) 的數據
-                valid_sample_count = sum(1 for x in sample if len(x) == 15 and x.isdigit())
-                
-                if len(sample) > 0 and (valid_sample_count / len(sample)) >= 0.5:
-                    target_imsis = col_a.tolist()
-                else:
-                    return jsonify({'success': False, 'message': '無法識別 IMSI 數據。請確保 Excel 包含 "IMSI" 標題，或 Column A 存放的是 15 位 IMSI 號碼。'}), 400
-            else:
-                return jsonify({'success': False, 'message': 'Excel 文件為空'}), 400
-
-        # --- 優化 2 & 3: 格式驗證與數據庫匹配 (保持原有優點) ---
-        valid_imsis = []
-        invalid_format_imsis = [] # 格式不對
+        # 使用 Pandas 向量化操作進行過濾 (比 Python for loop 快很多)
+        s_values = pd.Series(all_values)
         
-        # 1. 格式過濾
-        for imsi in target_imsis:
-            if len(imsi) == 15 and imsi.isdigit():
-                valid_imsis.append(imsi)
-            else:
-                invalid_format_imsis.append(imsi)
+        # 2. 格式驗證 (15位數字)
+        # 使用正則表達式匹配 15 位數字
+        valid_mask = s_values.str.match(r'^\d{15}$')
+        
+        # 提取有效 IMSI (去重)
+        valid_imsis = s_values[valid_mask].unique().tolist()
+        
+        # 統計無效數據 (這裡簡單計算總數差，不一一列出以節省資源)
+        total_count = len(s_values)
+        valid_count = len(valid_imsis)
+        invalid_count = total_count - valid_count
         
         if not valid_imsis:
-            msg = "未找到有效的 15 位 IMSI。"
-            if invalid_format_imsis:
-                msg += f" 發現 {len(invalid_format_imsis)} 筆格式錯誤。"
-            return jsonify({'success': False, 'message': msg}), 400
+             return jsonify({'success': False, 'message': f'未在文件中找到有效的 15 位 IMSI 號碼 (共掃描 {total_count} 個單元格)。'}), 400
 
-        # 2. 數據庫查找
-        resources = SimResource.query.filter(SimResource.imsi.in_(valid_imsis)).all()
+        # 3. 數據庫查詢優化
+        # 只查詢 id 和 imsi 欄位，不加載整個對象
+        # 使用 yield_per 分批處理，防止內存溢出 (雖然這裡只查 ID 影響不大，但好習慣)
+        found_records = db.session.query(SimResource.imsi, SimResource.id)\
+            .filter(SimResource.imsi.in_(valid_imsis))\
+            .all()
         
-        # 3. 建立映射並計算結果
-        found_map = {res.imsi: res.id for res in resources}
+        # 4. 構建結果
+        found_map = {rec.imsi: rec.id for rec in found_records}
         found_ids = list(found_map.values())
         
-        # 計算未找到的 (存在於 Excel 但不在 DB)
-        not_found_imsis = list(set(valid_imsis) - set(found_map.keys()))
+        # 計算未找到的 IMSI
+        not_found_count = len(valid_imsis) - len(found_ids)
         
-        # 4. 構建詳細反饋訊息
-        message = f"解析成功！"
-        details = []
+        # 構建訊息
+        message = f"解析完成！"
+        details = [f"• 成功匹配庫存: {len(found_ids)} 筆"]
         
-        details.append(f"• 成功匹配庫存: {len(found_ids)} 筆 (將被操作)")
+        if invalid_count > 0:
+            details.append(f"• 忽略格式不符: {invalid_count} 筆 (非15位數字或標題)")
         
-        if invalid_format_imsis:
-            details.append(f"• 忽略格式錯誤: {len(invalid_format_imsis)} 筆 (非15位數字)")
-            
-        if not_found_imsis:
-            details.append(f"• 庫存未找到: {len(not_found_imsis)} 筆 (請檢查 IMSI 是否正確)")
+        if not_found_count > 0:
+            details.append(f"• 庫存未找到: {not_found_count} 筆")
             
         full_message = message + "\n" + "\n".join(details)
             
@@ -650,11 +689,11 @@ def resolve_imsis_for_batch():
             'ids': found_ids,
             'count': len(found_ids),
             'message': full_message,
-            'invalid_count': len(invalid_format_imsis),
-            'not_found_count': len(not_found_imsis)
+            'invalid_count': invalid_count,
+            'not_found_count': not_found_count
         })
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': f"解析失敗: {str(e)}"}), 500  
+        # import traceback
+        # traceback.print_exc()
+        return jsonify({'success': False, 'message': f"解析失敗: {str(e)}"}), 500
