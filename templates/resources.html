@@ -194,163 +194,182 @@
         <button type="button" class="btn btn-danger ms-2" data-bs-toggle="modal" data-bs-target="#batchOpsModal">
             <i class="bi bi-tools"></i> 批量操作
         </button>
+
+        <button type="button" class="btn btn-dark ms-2" onclick="openConfigModal()">
+            <i class="bi bi-gear-fill"></i> 通用配置
+        </button>
     </div>
 </div>
 
-<div class="search-filter-group">
-    <form class="mb-4" method="GET" id="searchForm">
-        <input type="hidden" name="per_page" value="{{ search_params.per_page }}">
-        <input type="hidden" name="view_mode" value="{{ view_mode }}">
+<div class="search-filter-group position-relative" id="searchFilterGroup" style="transition: padding 0.3s ease;">
+    
+    <div class="d-flex justify-content-start align-items-center d-none" id="searchCollapsedHeader" style="height: 100%;">
+        <span class="small fw-bold text-secondary"><i class="bi bi-funnel-fill"></i> 搜索過濾器 (已摺疊)</span>
+    </div>
 
-        <div class="row mb-2 g-2">
-            <div class="col-md-2">
-                <label class="form-label small">Provider</label>
-                <div class="input-group input-group-sm">
-                    <select name="provider" class="form-select">
-                        <option value="">All</option>
-                        {% for provider in options.providers %}
-                            <option value="{{ provider }}" {% if search_params.provider == provider %}selected{% endif %}>{{ provider }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+    <div class="collapse show" id="searchContent">
+        <form class="mb-4" method="GET" id="searchForm">
+            <input type="hidden" name="per_page" value="{{ search_params.per_page }}">
+            <input type="hidden" name="view_mode" value="{{ view_mode }}">
+    
+            <div class="row mb-2 g-2">
+                <div class="col-md-2">
+                    <label class="form-label small">Provider</label>
+                    <div class="input-group input-group-sm">
+                        <select name="provider" class="form-select">
+                            <option value="">All</option>
+                            {% for provider in options.providers %}
+                                <option value="{{ provider }}" {% if search_params.provider == provider %}selected{% endif %}>{{ provider }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+                
+                <div class="col-md-2">
+                    <label class="form-label small">CardType</label>
+                    <div class="input-group input-group-sm">
+                        <select name="card_type" class="form-select">
+                            <option value="">All</option>
+                            {% for card_type in options.card_types %}
+                                <option value="{{ card_type }}" {% if search_params.card_type == card_type %}selected{% endif %}>{{ card_type }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+                
+                <div class="col-md-2">
+                    <label class="form-label small">ResourcesType</label>
+                    <div class="input-group input-group-sm">
+                        <select name="resources_type" class="form-select">
+                            <option value="">All</option>
+                            {% for rt in options.resources_types %}
+                                <option value="{{ rt }}" {% if search_params.resources_type == rt %}selected{% endif %}>{{ rt }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+                
+                <div class="col-md-3"> 
+                    <label class="form-label small">Batch</label>
+                    <div class="input-group input-group-sm">
+                        <select name="batch" class="form-select">
+                            <option value="">All</option>
+                            {% for batch in options.batches %}
+                                <option value="{{ batch }}" {% if search_params.batch == batch %}selected{% endif %}>{{ batch }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+    
+                <div class="col-md-3"> 
+                    <label class="form-label small">Received Date</label>
+                    <div class="input-group input-group-sm">
+                        <select name="received_date" class="form-select">
+                            <option value="">All</option>
+                            {% for r_date in options.received_dates %}
+                                <option value="{{ r_date }}" {% if search_params.received_date == r_date %}selected{% endif %}>{{ r_date }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
                 </div>
             </div>
             
-            <div class="col-md-2">
-                <label class="form-label small">CardType</label>
-                <div class="input-group input-group-sm">
-                    <select name="card_type" class="form-select">
-                        <option value="">All</option>
-                        {% for card_type in options.card_types %}
-                            <option value="{{ card_type }}" {% if search_params.card_type == card_type %}selected{% endif %}>{{ card_type }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+            <div class="row mb-2 g-2">
+                <div class="col-md-4">
+                    <label class="form-label small">IMSI (Range Supported)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="imsi" class="form-control" 
+                               placeholder="Single or Start-End" value="{{ search_params.imsi }}">
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <label class="form-label small">ICCID (Range Supported)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="iccid" class="form-control" 
+                               placeholder="Single or Start-End" value="{{ search_params.iccid }}">
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <label class="form-label small">MSISDN (Range Supported)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="msisdn" class="form-control" 
+                               placeholder="Single or Start-End" value="{{ search_params.msisdn }}">
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
                 </div>
             </div>
             
-            <div class="col-md-2">
-                <label class="form-label small">ResourcesType</label>
-                <div class="input-group input-group-sm">
-                    <select name="resources_type" class="form-select">
-                        <option value="">All</option>
-                        {% for rt in options.resources_types %}
-                            <option value="{{ rt }}" {% if search_params.resources_type == rt %}selected{% endif %}>{{ rt }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+            <div class="row mb-2 g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small">Status</label>
+                    <div class="input-group input-group-sm">
+                        <select name="status" class="form-select">
+                            <option value="">All</option>
+                            <option value="Available" {% if search_params.status == 'Available' %}selected{% endif %}>Available</option>
+                            <option value="Assigned" {% if search_params.status == 'Assigned' %}selected{% endif %}>Assigned</option>
+                        </select>
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+    
+                <div class="col-md-2"> 
+                    <label class="form-label small">Customer</label>
+                    <div class="input-group input-group-sm">
+                        <select name="customer" class="form-select">
+                            <option value="">All</option>
+                            {% for cust in options.customers %}
+                                <option value="{{ cust }}" {% if search_params.customer == cust %}selected{% endif %}>{{ cust }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+    
+                 <div class="col-md-3"> <label class="form-label small">Assigned Date Range</label>
+                    <div class="input-group input-group-sm">
+                        <input type="date" name="assigned_date_start" class="form-control" value="{{ search_params.assigned_date_start }}">
+                        <span class="input-group-text px-1">-</span>
+                        <input type="date" name="assigned_date_end" class="form-control" value="{{ search_params.assigned_date_end }}">
+                        <button class="btn btn-outline-secondary btn-clear" type="button" data-target="date-range"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+                
+                <div class="col-md-2">
+                    <label class="form-label small">Remark</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="remark" class="form-control" placeholder="Search remark..." value="{{ search_params.remark }}">
+                        <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
+                    </div>
+                </div>
+                
+                <div class="col-md-3 text-end">
+                    <button type="submit" class="btn btn-primary btn-sm me-2">
+                        <i class="bi bi-search"></i> Search
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="clearAllFilters()">
+                        <i class="bi bi-eraser"></i> Clear
+                    </button>
                 </div>
             </div>
-            
-            <div class="col-md-3"> 
-                <label class="form-label small">Batch</label>
-                <div class="input-group input-group-sm">
-                    <select name="batch" class="form-select">
-                        <option value="">All</option>
-                        {% for batch in options.batches %}
-                            <option value="{{ batch }}" {% if search_params.batch == batch %}selected{% endif %}>{{ batch }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
+        </form>
+    </div>
 
-            <div class="col-md-3"> 
-                <label class="form-label small">Received Date</label>
-                <div class="input-group input-group-sm">
-                    <select name="received_date" class="form-select">
-                        <option value="">All</option>
-                        {% for r_date in options.received_dates %}
-                            <option value="{{ r_date }}" {% if search_params.received_date == r_date %}selected{% endif %}>{{ r_date }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row mb-2 g-2">
-            <div class="col-md-4">
-                <label class="form-label small">IMSI (Range Supported)</label>
-                <div class="input-group input-group-sm">
-                    <input type="text" name="imsi" class="form-control" 
-                           placeholder="Single or Start-End" value="{{ search_params.imsi }}">
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <label class="form-label small">ICCID (Range Supported)</label>
-                <div class="input-group input-group-sm">
-                    <input type="text" name="iccid" class="form-control" 
-                           placeholder="Single or Start-End" value="{{ search_params.iccid }}">
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <label class="form-label small">MSISDN (Range Supported)</label>
-                <div class="input-group input-group-sm">
-                    <input type="text" name="msisdn" class="form-control" 
-                           placeholder="Single or Start-End" value="{{ search_params.msisdn }}">
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row mb-2 g-2 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label small">Status</label>
-                <div class="input-group input-group-sm">
-                    <select name="status" class="form-select">
-                        <option value="">All</option>
-                        <option value="Available" {% if search_params.status == 'Available' %}selected{% endif %}>Available</option>
-                        <option value="Assigned" {% if search_params.status == 'Assigned' %}selected{% endif %}>Assigned</option>
-                    </select>
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-
-            <div class="col-md-2"> 
-                <label class="form-label small">Customer</label>
-                <div class="input-group input-group-sm">
-                    <select name="customer" class="form-select">
-                        <option value="">All</option>
-                        {% for cust in options.customers %}
-                            <option value="{{ cust }}" {% if search_params.customer == cust %}selected{% endif %}>{{ cust }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-
-             <div class="col-md-3"> <label class="form-label small">Assigned Date Range</label>
-                <div class="input-group input-group-sm">
-                    <input type="date" name="assigned_date_start" class="form-control" value="{{ search_params.assigned_date_start }}">
-                    <span class="input-group-text px-1">-</span>
-                    <input type="date" name="assigned_date_end" class="form-control" value="{{ search_params.assigned_date_end }}">
-                    <button class="btn btn-outline-secondary btn-clear" type="button" data-target="date-range"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-            
-            <div class="col-md-2">
-                <label class="form-label small">Remark</label>
-                <div class="input-group input-group-sm">
-                    <input type="text" name="remark" class="form-control" placeholder="Search remark..." value="{{ search_params.remark }}">
-                    <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
-                </div>
-            </div>
-            
-            <div class="col-md-3 text-end">
-                <button type="submit" class="btn btn-primary btn-sm me-2">
-                    <i class="bi bi-search"></i> Search
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="clearAllFilters()">
-                    <i class="bi bi-eraser"></i> Clear
-                </button>
-            </div>
-        </div>
-    </form>
+    <button type="button" 
+            class="btn btn-sm btn-light text-secondary border rounded-circle position-absolute shadow-sm d-flex align-items-center justify-content-center"
+            style="bottom: -18px; right: 20px; width: 36px; height: 36px; z-index: 10; transition: transform 0.2s;"
+            onclick="toggleSearchFilters()"
+            title="摺疊/展開搜索欄">
+        <i class="bi bi-chevron-up" id="searchToggleIcon" style="font-size: 12px;"></i>
+    </button>
 </div>
 
 <div class="table-responsive">
@@ -1012,19 +1031,21 @@
                 <form id="batchOpsForm">
                     <div class="mb-4">
                         <label class="form-label fw-bold border-bottom w-100 pb-1">1. 選擇操作範圍</label>
+                        
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="radio" name="opsScope" id="opsScopeSelected" value="selected" checked>
                             <label class="form-check-label" for="opsScopeSelected">
                                 按已選擇的項目 (<span id="opsSelectedCount">0</span> 個)
                             </label>
                         </div>
-                        <div class="form-check">
+                        
+                        <div class="form-check mb-2">
                             <input class="form-check-input" type="radio" name="opsScope" id="opsScopeRange" value="range">
                             <label class="form-check-label" for="opsScopeRange">
                                 按 IMSI 範圍
                             </label>
                         </div>
-                        <div id="opsRangeInputs" class="row g-2 mt-2 ms-3" style="display:none;">
+                        <div id="opsRangeInputs" class="row g-2 mt-1 ms-3 mb-2" style="display:none;">
                             <div class="col-6">
                                 <input type="text" class="form-control form-control-sm" id="opsStartImsi" placeholder="Start IMSI">
                             </div>
@@ -1032,6 +1053,18 @@
                                 <input type="text" class="form-control form-control-sm" id="opsEndImsi" placeholder="End IMSI">
                             </div>
                         </div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="opsScope" id="opsScopeImport" value="import">
+                            <label class="form-check-label d-flex align-items-center" for="opsScopeImport">
+                                按導入 IMSI (<span id="opsImportCount">0</span> 個)
+                                <button type="button" class="btn btn-sm btn-outline-primary ms-3 py-0 px-2" id="btnOpsImport" style="display: none;">
+                                    <i class="bi bi-upload"></i> 導入 Excel
+                                </button>
+                                <input type="file" id="opsImportFile" accept=".xlsx, .xls" style="display: none;">
+                            </label>
+                        </div>
+                        <div id="opsImportMsg" class="small ms-4"></div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold border-bottom w-100 pb-1">2. 選擇操作</label>
@@ -1144,11 +1177,106 @@
     </div>
 </div>
 
+<div class="modal fade" id="configModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-gear-fill"></i> 通用配置</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cfg-providers">Providers</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cfg-cardtypes">Card Types</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cfg-resourcetypes">Resources Types</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cfg-mapping">Mapping</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cfg-general">其他</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="cfg-providers">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" id="newProviderInput" placeholder="輸入新 Provider 名稱">
+                            <button class="btn btn-success" onclick="addConfigItem('providers', 'newProviderInput')">添加</button>
+                        </div>
+                        <ul class="list-group" id="providersList"></ul>
+                    </div>
+
+                    <div class="tab-pane fade" id="cfg-cardtypes">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" id="newCardTypeInput" placeholder="輸入新 Card Type">
+                            <button class="btn btn-success" onclick="addConfigItem('card_types', 'newCardTypeInput')">添加</button>
+                        </div>
+                        <ul class="list-group" id="cardTypesList"></ul>
+                    </div>
+
+                    <div class="tab-pane fade" id="cfg-resourcetypes">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" id="newResTypeInput" placeholder="輸入新 Resources Type">
+                            <button class="btn btn-success" onclick="addConfigItem('resources_types', 'newResTypeInput')">添加</button>
+                        </div>
+                        <ul class="list-group" id="resTypesList"></ul>
+                    </div>
+
+                    <div class="tab-pane fade" id="cfg-mapping">
+                        <div class="alert alert-info py-2 small">
+                            <i class="bi bi-info-circle"></i> 設定層級關係: <b>Provider</b> -> <b>Card Type</b> -> <b>Resources Types</b>
+                        </div>
+                        <div class="row" style="height: 400px;">
+                            <div class="col-4 border-end h-100 d-flex flex-column">
+                                <label class="form-label fw-bold bg-light p-2 mb-0 border-bottom">1. 選擇 Provider</label>
+                                <div class="list-group list-group-flush flex-grow-1 overflow-auto" id="mappingProviderList">
+                                    </div>
+                            </div>
+                            
+                            <div class="col-4 border-end h-100 d-flex flex-column">
+                                <label class="form-label fw-bold bg-light p-2 mb-0 border-bottom">2. 選擇 Card Type</label>
+                                <div class="list-group list-group-flush flex-grow-1 overflow-auto" id="mappingCardTypeList">
+                                    <div class="text-muted small p-3 text-center">請先選擇 Provider</div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-4 h-100 d-flex flex-column">
+                                <label class="form-label fw-bold bg-light p-2 mb-0 border-bottom">3. 關聯 Resources Types</label>
+                                <div class="p-2 flex-grow-1 overflow-auto" id="mappingResTypesContainer">
+                                    <div class="text-muted small p-3 text-center">請先選擇 Card Type</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="cfg-general">
+                        <div class="mb-3">
+                            <label class="form-label">低庫存閾值 (Low Stock Threshold)</label>
+                            <input type="number" class="form-control" id="cfgLowStock" min="0">
+                            <div class="form-text">當某類庫存低於此數量時，首頁和資源概覽會顯示紅色警告。</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// [新增] 切換視圖模式
+// 切換視圖模式
 function changeViewMode(mode) {
     const params = new URLSearchParams(window.location.search);
     params.set('view_mode', mode);
@@ -1157,7 +1285,7 @@ function changeViewMode(mode) {
     window.location.href = `?${params.toString()}`;
 }
 
-// [新增] 切換 Remark 顯示模式
+// 切換 Remark 顯示模式
 function toggleRemarkMode(header) {
     var table = document.querySelector('table');
     var icon = header.querySelector('#remarkToggleIcon');
@@ -1229,38 +1357,97 @@ function changePerPage(val) {
     window.location.href = `?${params.toString()}`;
 }
 
+// 切換搜索欄摺疊狀態
+function toggleSearchFilters() {
+    var content = $('#searchContent');
+    
+    // 執行 Bootstrap 的 toggle
+    content.collapse('toggle');
+}
+
+$(document).ready(function() {
+    // 監聽摺疊事件，更新圖標和樣式
+    $('#searchContent').on('hide.bs.collapse', function () {
+        // 當開始隱藏時，更換箭頭，顯示簡易標題，減少 padding
+        $('#searchToggleIcon').removeClass('bi-chevron-up').addClass('bi-chevron-down');
+        $('#searchCollapsedHeader').removeClass('d-none'); 
+        // 將外層 padding 減小，讓摺疊後的條更細
+        $('#searchFilterGroup').css('padding', '5px 15px');
+    });
+
+    $('#searchContent').on('show.bs.collapse', function () {
+        // 當開始展開時，更換箭頭，隱藏簡易標題，恢復 padding
+        $('#searchToggleIcon').removeClass('bi-chevron-down').addClass('bi-chevron-up');
+        $('#searchCollapsedHeader').addClass('d-none'); 
+        // 恢復原有的 padding
+        $('#searchFilterGroup').css('padding', '15px');
+    });
+});
+
 // 獲取後端傳遞的對應關係，如果沒有則為空對象
 const providerMapping = {{ options.provider_mapping | default({}) | tojson }};
 const allResourcesTypes = {{ options.resources_types | default([]) | tojson }};
 
-function updateResourceTypes(provider, targetSelector, defaultText, selectedValue) {
+// 更新資源類型下拉選單 (支援 3 層聯動 + 空值處理)
+function updateResourceTypes(provider, cardType, targetSelector, defaultText, selectedValue) {
     const $select = $(targetSelector);
-    $select.empty().append(`<option value="">${defaultText}</option>`);
+    $select.empty();
     
     let types = [];
     
-    if (!provider) {
-        // 如果沒有選擇 Provider (或選擇了"不修改")，顯示所有可用的 Resources Types
+    // 1. 如果有 Provider 和 CardType，精確查找 Mapping
+    if (provider && cardType) {
+        if (providerMapping[provider] && providerMapping[provider][cardType]) {
+            types = providerMapping[provider][cardType];
+        }
+    } 
+    // 2. 如果只有 Provider，顯示該 Provider 下所有 CardType 的聯集
+    else if (provider) {
+        if (providerMapping[provider]) {
+            let unionSet = new Set();
+            for (let ct in providerMapping[provider]) {
+                providerMapping[provider][ct].forEach(t => unionSet.add(t));
+            }
+            types = Array.from(unionSet);
+        }
+    }
+    // 3. 如果都沒有，顯示所有
+    else {
         types = allResourcesTypes;
-    } else {
-        // 根據 Provider 獲取對應的 Types
-        types = providerMapping[provider] || [];
     }
     
-    // 生成選項
-    types.forEach(type => {
-        $select.append(`<option value="${type}">${type}</option>`);
-    });
+    // 處理 ResourceType 為空的情況
+    // 如果指定了 Provider/CardType 但找不到對應的 Resource Types (即不需要 ResourceType)
+    if (types.length === 0 && provider && cardType) {
+        // 添加 "N/A" 選項
+        $select.append(`<option value="">(N/A)</option>`);
+        
+        // 如果是必填表單 (Add/Assign)，移除 required 屬性，允許空值提交
+        if (targetSelector === '#resourcesType' || targetSelector === '#assignResourcesType') {
+            $select.removeAttr('required');
+        }
+    } else {
+        // 正常情況：添加默認選項和列表
+        $select.append(`<option value="">${defaultText}</option>`);
+        types.sort().forEach(type => {
+            $select.append(`<option value="${type}">${type}</option>`);
+        });
+        
+        // 恢復 required 屬性 (如果是必填表單)
+        if (targetSelector === '#resourcesType' || targetSelector === '#assignResourcesType') {
+            $select.attr('required', 'required');
+        }
+    }
     
-    // 如果有選中的值（編輯模式或回填），確保它被選中
+    // 恢復選中值
     if (selectedValue) {
-        // 如果該值不在列表中（可能是舊數據），手動添加它
         if ($select.find(`option[value="${selectedValue}"]`).length === 0) {
             $select.append(`<option value="${selectedValue}">${selectedValue}</option>`);
         }
         $select.val(selectedValue);
     }
 }
+
 var selectedResourceIds = [];
 var availableColumns = ["IMSI", "ICCID", "MSISDN", "LPA", "Ki", "OPC", "Customer", "Assign Date", "Provider", "CardType", "ResourcesType", "Remark", "Status", "Batch", "ReceivedDate", "PIN1", "PUK1", "PIN2", "PUK2", "Created At", "Updated At"];
 var defaultCheckedCols = ['IMSI', 'ICCID', 'MSISDN'];
@@ -1284,10 +1471,331 @@ function updateSelectedIds() {
     $('.selected-count-display, #selectedCountDisplay, #opsSelectedCount').text(selectedResourceIds.length);
 }
 
+// === 通用配置管理腳本 ===
+let globalConfig = {};
+
+// 打開配置視窗
+function openConfigModal() {
+    // 顯示加載狀態 (可選，防止用戶以為沒反應)
+    var btn = event ? $(event.target).closest('button') : null;
+    var originalHtml = '';
+    if(btn) {
+        originalHtml = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    }
+
+    // 1. 獲取最新配置
+    $.get('/resources/api/config/get')
+        .done(function(data) {
+            globalConfig = data;
+            renderConfigUI();
+            $('#configModal').modal('show');
+        })
+        .fail(function(xhr) {
+            console.error(xhr);
+            // 這裡是關鍵：如果後端沒更新，這裡會提示 404
+            if (xhr.status === 404) {
+                alert('錯誤：找不到配置接口 (404)。\n請確認後端 routes.py 是否已包含 /api/config/get 路由。');
+            } else {
+                alert('無法加載配置：' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.statusText));
+            }
+        })
+        .always(function() {
+            if(btn) btn.prop('disabled', false).html(originalHtml);
+        });
+}
+
+// 渲染 UI
+function renderConfigUI() {
+    renderSimpleList('providers', 'providersList', 'provider');
+    renderSimpleList('card_types', 'cardTypesList', 'card_type');
+    renderSimpleList('resources_types', 'resTypesList', 'resources_type');
+    renderMappingUI();
+    $('#cfgLowStock').val(globalConfig.low_stock_threshold);
+}
+
+// 渲染簡單列表 (Provider, CardType, ResType)
+function renderSimpleList(configKey, listId, checkCategory) {
+    const list = $(`#${listId}`);
+    list.empty();
+    
+    (globalConfig[configKey] || []).forEach(item => {
+        const li = $(`
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>${item}</span>
+                <button class="btn btn-sm btn-outline-danger btn-delete-cfg" data-val="${item}">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </li>
+        `);
+        
+        // 綁定刪除事件 (含佔用檢查)
+        li.find('.btn-delete-cfg').click(function() {
+            checkAndRemoveItem(configKey, item, checkCategory, $(this));
+        });
+        
+        list.append(li);
+    });
+}
+
+// 添加項目
+function addConfigItem(configKey, inputId) {
+    const input = $(`#${inputId}`);
+    const val = input.val().trim();
+    
+    if (!val) return;
+    
+    if (globalConfig[configKey].includes(val)) {
+        alert('該名稱已存在！');
+        return;
+    }
+    
+    globalConfig[configKey].push(val);
+    input.val(''); // 清空輸入框
+    renderConfigUI(); // 重新渲染所有 Tab (因為 Mapping 可能依賴這些數據)
+}
+
+// 檢查並刪除項目 (適配 3 層 Mapping 結構)
+function checkAndRemoveItem(configKey, value, checkCategory, btnElement) {
+    // 1. 檢查是否在 Mapping 中被使用 (僅針對 Resources Types)
+    if (configKey === 'resources_types') {
+        let isMapped = false;
+        
+        // 遍歷 3 層結構：Provider -> CardType -> ResTypeList
+        for (let prov in globalConfig.provider_mapping) {
+            let cardTypeMap = globalConfig.provider_mapping[prov];
+            
+            // cardTypeMap 是一個對象 { "eSIM": [...], "Physical": [...] }
+            if (cardTypeMap) {
+                for (let cardType in cardTypeMap) {
+                    let resList = cardTypeMap[cardType];
+                    // 檢查該 CardType 下的列表中是否包含此 ResourceType
+                    if (Array.isArray(resList) && resList.includes(value)) {
+                        isMapped = true; 
+                        break; 
+                    }
+                }
+            }
+            if (isMapped) break; 
+        }
+        
+        if (isMapped) {
+            alert(`"${value}" 正在 Mapping 設定中被使用，請先解除關聯。`);
+            return;
+        }
+    }
+
+    // 2. 檢查 DB 佔用
+    btnElement.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    
+    $.ajax({
+        url: '/resources/api/config/check_usage',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ category: checkCategory, value: value }),
+        success: function(res) {
+            if (res.used) {
+                alert(`無法刪除 "${value}"：\n數據庫中已有相關聯的 SIM 資源記錄。`);
+                btnElement.prop('disabled', false).html('<i class="bi bi-trash"></i>');
+            } else {
+                // 執行刪除
+                const index = globalConfig[configKey].indexOf(value);
+                if (index > -1) {
+                    globalConfig[configKey].splice(index, 1);
+                    
+                    // 清理 Mapping 中的關聯數據
+                    if (configKey === 'providers') {
+                        // 如果刪除 Provider，直接刪除該 Key
+                        delete globalConfig.provider_mapping[value];
+                    } 
+                    else if (configKey === 'card_types') {
+                        // 如果刪除 Card Type，遍歷所有 Provider 刪除對應的 Card Type Key
+                        for (let prov in globalConfig.provider_mapping) {
+                            if (globalConfig.provider_mapping[prov][value]) {
+                                delete globalConfig.provider_mapping[prov][value];
+                            }
+                        }
+                    }
+                    
+                    renderConfigUI();
+                }
+            }
+        },
+        error: function() {
+            alert('檢查失敗，請稍後重試');
+            btnElement.prop('disabled', false).html('<i class="bi bi-trash"></i>');
+        }
+    });
+}
+
+// Mapping UI 邏輯 (3層)
+let currentMapProvider = null;
+let currentMapCardType = null;
+
+function renderMappingUI() {
+    const provList = $('#mappingProviderList');
+    const cardTypeList = $('#mappingCardTypeList');
+    const resContainer = $('#mappingResTypesContainer');
+    
+    provList.empty();
+    cardTypeList.html('<div class="text-muted small p-3 text-center">請先選擇 Provider</div>');
+    resContainer.html('<div class="text-muted small p-3 text-center">請先選擇 Card Type</div>');
+    currentMapProvider = null;
+    currentMapCardType = null;
+    
+    // 渲染 Provider 列表
+    globalConfig.providers.forEach(prov => {
+        const a = $(`<a href="#" class="list-group-item list-group-item-action" data-val="${prov}">${prov}</a>`);
+        a.click(function(e) {
+            e.preventDefault();
+            provList.find('a').removeClass('active');
+            $(this).addClass('active');
+            currentMapProvider = prov;
+            renderMappingCardTypes(); // 進入第二層
+        });
+        provList.append(a);
+    });
+}
+
+function renderMappingCardTypes() {
+    const list = $('#mappingCardTypeList');
+    const resContainer = $('#mappingResTypesContainer');
+    
+    list.empty();
+    resContainer.html('<div class="text-muted small p-3 text-center">請先選擇 Card Type</div>');
+    currentMapCardType = null;
+
+    if (!currentMapProvider) return;
+
+    // 渲染 Card Types (使用全局定義的 Card Types)
+    globalConfig.card_types.forEach(ct => {
+        const a = $(`<a href="#" class="list-group-item list-group-item-action" data-val="${ct}">${ct}</a>`);
+        a.click(function(e) {
+            e.preventDefault();
+            list.find('a').removeClass('active');
+            $(this).addClass('active');
+            currentMapCardType = ct;
+            renderMappingCheckboxes(); // 進入第三層
+        });
+        list.append(a);
+    });
+}
+
+function renderMappingCheckboxes() {
+    const container = $('#mappingResTypesContainer');
+    container.empty();
+
+    if (!currentMapProvider || !currentMapCardType) return;
+    
+    // 初始化結構: mapping[Provider][CardType] = []
+    if (!globalConfig.provider_mapping[currentMapProvider]) {
+        globalConfig.provider_mapping[currentMapProvider] = {};
+    }
+    if (!Array.isArray(globalConfig.provider_mapping[currentMapProvider][currentMapCardType])) {
+        globalConfig.provider_mapping[currentMapProvider][currentMapCardType] = [];
+    }
+
+    const currentRelations = globalConfig.provider_mapping[currentMapProvider][currentMapCardType];
+
+    globalConfig.resources_types.forEach(rt => {
+        const isChecked = currentRelations.includes(rt) ? 'checked' : '';
+        const div = $(`
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" value="${rt}" id="map_${rt}" ${isChecked}>
+                <label class="form-check-label" for="map_${rt}">${rt}</label>
+            </div>
+        `);
+
+        div.find('input').change(function() {
+            const val = $(this).val();
+            const targetArray = globalConfig.provider_mapping[currentMapProvider][currentMapCardType];
+            
+            if ($(this).is(':checked')) {
+                if (!targetArray.includes(val)) targetArray.push(val);
+            } else {
+                const idx = targetArray.indexOf(val);
+                if (idx > -1) targetArray.splice(idx, 1);
+            }
+        });
+        container.append(div);
+    });
+}
+
+// 保存配置到後端
+function saveConfig() {
+    // 獲取保存按鈕
+    var $btn = $('#configModal .modal-footer .btn-primary');
+    var originalText = $btn.html();
+    
+    // 設置 Loading 狀態
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 保存中...');
+
+    // 獲取 General Tab 的值
+    globalConfig.low_stock_threshold = parseInt($('#cfgLowStock').val()) || 1000;
+    
+    $.ajax({
+        url: '/resources/api/config/save',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(globalConfig),
+        success: function(res) {
+            if (res.success) {
+                location.reload();
+            } else {
+                alert('保存失敗: ' + res.message);
+                // 失敗時恢復按鈕
+                $btn.prop('disabled', false).html(originalText);
+            }
+        },
+        error: function(err) {
+            alert('保存錯誤: ' + err.statusText);
+            // 錯誤時恢復按鈕
+            $btn.prop('disabled', false).html(originalText);
+        }
+    });
+}
+
+
+
 $(document).ready(function() {
     const today = new Date().toISOString().split('T')[0];
     $('#assignDate').val(today);
     $('#manualDate').val(today);
+
+    // 1. 資源分配 Modal 的聯動 (Auto Assignment)
+    $('#assignProvider').change(function() { 
+        updateResourceTypes($(this).val(), $('#assignCardType').val(), '#assignResourcesType', 'Select...'); 
+    });
+
+    $('#assignCardType').change(function() { 
+        updateResourceTypes($('#assignProvider').val(), $(this).val(), '#assignResourcesType', 'Select...'); 
+    });    
+
+    // 2. 搜索欄的聯動 (Search Filter)
+    // 定義搜索欄的選擇器
+    const searchProviderSel = '#searchForm select[name="provider"]';
+    const searchCardTypeSel = '#searchForm select[name="card_type"]';
+    const searchResTypeSel = '#searchForm select[name="resources_type"]';
+
+    // A. 綁定 change 事件 (當用戶手動切換 Provider 時)
+    // Provider 變更 -> 更新 ResType
+    $(searchProviderSel).change(function() {
+        updateResourceTypes($(this).val(), $(searchCardTypeSel).val(), searchResTypeSel, 'All');
+    });
+
+    // CardType 變更 -> 更新 ResType
+    $(searchCardTypeSel).change(function() {
+        updateResourceTypes($(searchProviderSel).val(), $(this).val(), searchResTypeSel, 'All');
+    });
+
+    // B. 頁面加載時初始化 (確保刷新頁面後，Mapping 依然生效且保留選中值)
+    var currentSearchProvider = $(searchProviderSel).val();
+    var currentSearchCardType = $(searchCardTypeSel).val();
+    if (currentSearchProvider || currentSearchCardType) {
+        var currentSelectedResType = "{{ search_params.resources_type }}"; 
+        updateResourceTypes(currentSearchProvider, currentSearchCardType, searchResTypeSel, 'All', currentSelectedResType);
+    }
+
     let currentOptions = [];
     let selectedOptionIndex = -1;
 
@@ -1315,7 +1823,7 @@ $(document).ready(function() {
         }
     });
     
-    // [修改] 加載導出過濾器的函數
+    // 加載導出過濾器的函數
     function loadExportFilterOptions(updateTarget = 'all') {
         var searchParams = {};
         var urlParams = new URLSearchParams(window.location.search);
@@ -1373,7 +1881,7 @@ $(document).ready(function() {
                 $dateSelect.html('<option value="ALL">ALL (Load Failed)</option>').prop('disabled', false);
             }
         });
-    }
+    }    
 
     $('input[name="exportScope"]').change(function() {
         var scope = $(this).val();
@@ -1400,7 +1908,7 @@ $(document).ready(function() {
         }
     });
 
-    // [修改] 監聽 Customer 變化，只更新 Date
+    // 監聽 Customer 變化，只更新 Date
     $('#exportCustomer').change(function() {
         var val = $(this).val();
         loadExportFilterOptions('date'); // [關鍵修改] 傳入 'date'
@@ -1435,7 +1943,14 @@ $(document).ready(function() {
         const resType = $('#assignResourcesType').val();
         const qty = $('#assignQty').val();
         
-        if (!provider || !cardType || !resType || !qty) { alert('Please fill in all criteria fields.'); return; }
+        // 檢查 ResourcesType 是否為必填
+        const isResTypeRequired = $('#assignResourcesType').attr('required');
+        
+        // 驗證邏輯：如果 ResourceType 是必填的，則不能為空；否則允許為空
+        if (!provider || !cardType || !qty || (isResTypeRequired && !resType)) { 
+            alert('Please fill in all criteria fields.'); 
+            return; 
+        }
         
         $('#assignOptionsArea').hide();
         $('#autoAssignError').hide();
@@ -1586,43 +2101,171 @@ $(document).ready(function() {
         });
     });
 
+    // 存儲導入的 ID
+    let opsImportedIds = [];
+
     $('#batchOpsModal').on('show.bs.modal', function () {
         updateSelectedIds();
         var defaultScope = selectedResourceIds.length > 0 ? 'selected' : 'range';
         $('input[name="opsScope"]').filter(`[value="${defaultScope}"]`).prop('checked', true).trigger('change');
         $('#opsProvider').val(''); 
-        updateResourceTypes('', '#opsResourcesType', '(不修改)');
+        
+        // [修復 1] 這裡原本少傳了一個參數，導致 JS 解析錯誤
+        // 原本: updateResourceTypes('', '#opsResourcesType', '(不修改)');
+        // 修正: updateResourceTypes('', '', '#opsResourcesType', '(不修改)'); 
+        updateResourceTypes('', '', '#opsResourcesType', '(不修改)');
+        
+        // 重置導入狀態
+        opsImportedIds = [];
+        $('#opsImportCount').text('0');
+        $('#opsImportMsg').text('');
+        $('#opsImportFile').val('');
     });
 
+    // 監聽 Scope 切換
     $(document).on('change', 'input[name="opsScope"]', function() {
-        if ($('#opsScopeRange').is(':checked')) { $('#opsRangeInputs').show(); } else { $('#opsRangeInputs').hide(); }
+        // 隱藏所有額外輸入
+        $('#opsRangeInputs').hide();
+        $('#btnOpsImport').hide();
+        $('#opsImportMsg').hide();
+        
+        if ($('#opsScopeRange').is(':checked')) { 
+            $('#opsRangeInputs').show(); 
+        } else if ($('#opsScopeImport').is(':checked')) {
+            $('#btnOpsImport').show();
+            $('#opsImportMsg').show();
+        }
     });
 
+    // 導入按鈕點擊事件
+    $('#btnOpsImport').click(function() {
+        $('#opsImportFile').click();
+    });
+
+    // 文件選擇與上傳解析
+    $('#opsImportFile').change(function() {
+        if (this.files.length === 0) return;
+        
+        var formData = new FormData();
+        formData.append('file', this.files[0]);
+        
+        var $msg = $('#opsImportMsg');
+        $msg.removeClass('text-danger text-success').addClass('text-info').text('正在解析文件...').show();
+        
+        $.ajax({
+            url: '/resources/api/batch/resolve_imsis',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(res) {
+                if (res.success) {
+                    opsImportedIds = res.ids;
+                    $('#opsImportCount').text(res.count);
+                    
+                    var msgClass = res.count > 0 ? 'text-success' : 'text-danger';
+                    $msg.removeClass('text-info').addClass(msgClass).text(res.message);
+                    
+                    // 清空 input 允許重複上傳同一文件
+                    $('#opsImportFile').val('');
+                }
+            },
+            error: function(xhr) {
+                var msg = xhr.responseJSON ? xhr.responseJSON.message : '上傳失敗';
+                $msg.removeClass('text-info').addClass('text-danger').text(msg);
+                opsImportedIds = [];
+                $('#opsImportCount').text('0');
+                $('#opsImportFile').val('');
+            }
+        });
+    });    
+
+    // 執行批量操作主函數
     function executeBatchOperation(action) {
         var scope = $('input[name="opsScope"]:checked').val();
         var startImsi = $('#opsStartImsi').val().trim();
         var endImsi = $('#opsEndImsi').val().trim();
-        if (scope === 'selected' && selectedResourceIds.length === 0) { alert('請先在表格中勾選項目，或切換至 "按 IMSI 範圍" 操作。'); return; }
-        if (scope === 'range' && (!startImsi || !endImsi)) { alert('請輸入起始和結束 IMSI。'); return; }
-        var payload = { action: action, scope: scope, ids: selectedResourceIds, start_imsi: startImsi, end_imsi: endImsi, data: {} };
+        
+        // 準備目標 ID 列表
+        var targetIds = [];
+        
+        // 驗證邏輯
+        if (scope === 'selected') {
+            if (selectedResourceIds.length === 0) { alert('請先在表格中勾選項目。'); return; }
+            targetIds = selectedResourceIds;
+        } else if (scope === 'range') {
+            if (!startImsi || !endImsi) { alert('請輸入起始和結束 IMSI。'); return; }
+        } else if (scope === 'import') {
+            if (opsImportedIds.length === 0) { alert('請先導入有效的 IMSI 列表。'); return; }
+            targetIds = opsImportedIds;
+        }
+
+        // 構建 Payload
+        // 技巧：如果是 'import' 模式，我們將其轉換為 'selected' 模式發送給後端，並附上解析出的 IDs
+        // 這樣後端無需修改太多邏輯，直接復用 'selected' 的處理方式 (即 filter(id.in_(ids)))
+        var finalScope = (scope === 'import') ? 'selected' : scope;
+        
+        var payload = { 
+            action: action, 
+            scope: finalScope, 
+            ids: targetIds, 
+            start_imsi: startImsi, 
+            end_imsi: endImsi, 
+            data: {} 
+        };
+
         if (action === 'edit') {
             var hasChanges = false;
-            var editData = { 'Provider': $('#opsProvider').val(), 'CardType': $('#opsCardType').val(), 'ResourcesType': $('#opsResourcesType').val(), 'Batch': $('#opsBatch').val(), 'ReceivedDate': $('#opsReceivedDate').val(), 'Remark': $('#opsRemark').val() };
+            var editData = { 
+                'Provider': $('#opsProvider').val(), 
+                'CardType': $('#opsCardType').val(), 
+                'ResourcesType': $('#opsResourcesType').val(), 
+                'Batch': $('#opsBatch').val(), 
+                'ReceivedDate': $('#opsReceivedDate').val(), 
+                'Remark': $('#opsRemark').val() 
+            };
             for (var key in editData) { if (editData[key]) hasChanges = true; }
             if (!hasChanges) { alert('請至少填寫一個要修改的欄位。'); return; }
             payload.data = editData;
         }
+
         var confirmMsg = action === 'delete' ? '警告：確定要執行批量刪除嗎？此操作不可恢復！' : '確定要執行批量更新嗎？';
         if (!confirm(confirmMsg)) return;
+
         var btnId = action === 'edit' ? '#btnExecEdit' : '#btnExecDelete';
         var $btn = $(btnId);
         var originalText = $btn.html();
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 執行中...');
+
         $.ajax({
-            url: '/resources/api/batch/operation', method: 'POST', contentType: 'application/json',
+            url: '/resources/api/batch/operation', 
+            method: 'POST', 
+            contentType: 'application/json',
             data: JSON.stringify(payload),
-            success: function(res) { if (res.success) { alert(res.message); location.reload(); } else { alert('操作失敗: ' + res.message); $btn.prop('disabled', false).html(originalText); } },
-            error: function(xhr) { var msg = xhr.responseJSON ? xhr.responseJSON.message : '未知錯誤'; alert('請求錯誤: ' + msg); $btn.prop('disabled', false).html(originalText); }
+            success: function(res) { 
+                if (res.success) { 
+                    // 1. 先關閉視窗
+                    $('#batchOpsModal').modal('hide');
+                    
+                    // 2. 延遲一小段時間彈出 Alert，避免與 Modal 關閉動畫衝突
+                    setTimeout(function() {
+                        alert(res.message); 
+                        
+                        // 3. 自動刷新頁面
+                        // 這會重新加載當前 URL (包含 Provider, Status 等搜索參數)
+                        // 用戶點擊 Alert 的 "確定" 後，頁面會立即刷新顯示最新數據
+                        window.location.reload(); 
+                    }, 100);
+                } else { 
+                    alert('操作失敗: ' + res.message); 
+                    $btn.prop('disabled', false).html(originalText); 
+                } 
+            },
+            error: function(xhr) { 
+                var msg = xhr.responseJSON ? xhr.responseJSON.message : '未知錯誤'; 
+                alert('請求錯誤: ' + msg); 
+                $btn.prop('disabled', false).html(originalText); 
+            }
         });
     }
 
@@ -1670,13 +2313,16 @@ $(document).ready(function() {
 
     // 新增/編輯資源 Modal 的聯動
     $('#provider').change(function() { 
-        updateResourceTypes($(this).val(), '#resourcesType', '請選擇資源類型'); 
-    });
+        updateResourceTypes($(this).val(), $('#cardType').val(), '#resourcesType', '請選擇資源類型'); 
+    });   
     
     // 批量操作 Modal 的聯動
     $('#opsProvider').change(function() { 
-        // 這裡預設文字使用 "(不修改)"
-        updateResourceTypes($(this).val(), '#opsResourcesType', '(不修改)'); 
+        updateResourceTypes($(this).val(), $('#opsCardType').val(), '#opsResourcesType', '(不修改)'); 
+    });
+    
+    $('#opsCardType').change(function() { 
+        updateResourceTypes($('#opsProvider').val(), $(this).val(), '#opsResourcesType', '(不修改)'); 
     });
 
     $('#cardType').change(function() {
@@ -1685,9 +2331,15 @@ $(document).ready(function() {
         $('#ki, #opc, #lpa').removeAttr('required');
         if (type === 'Soft Profile') { $('.softprofile-fields').removeClass('d-none'); $('#ki, #opc').attr('required', true); }
         else if (type === 'eSIM') { $('.esim-fields').removeClass('d-none'); $('#lpa').attr('required', true); }
+        updateResourceTypes($('#provider').val(), type, '#resourcesType', '請選擇資源類型');
     });
 
     $('#saveResourceBtn').click(function() {
+        const form = document.getElementById('resourceForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
         const data = {
             Provider: $('#provider').val().trim(), CardType: $('#cardType').val().trim(), ResourcesType: $('#resourcesType').val().trim(),
             Batch: $('#batch').val().trim(), ReceivedDate: $('#receivedDate').val().trim(), IMSI: $('#imsi').val().trim(), ICCID: $('#iccid').val().trim(), MSISDN: $('#msisdn').val().trim(),
@@ -1707,9 +2359,11 @@ $(document).ready(function() {
         modal.find('.modal-title').text('編輯資源');
         $('#editId').val($(this).data('id'));
         const provider = $(this).data('provider');
+        const cardType = $(this).data('cardtype');
+        const resType = $(this).data('resourcestype');
         $('#provider').val(provider);
-        updateResourceTypes(provider, '#resourcesType', '請選擇資源類型', $(this).data('resourcestype'));
-        $('#cardType').val($(this).data('cardtype')).trigger('change');
+        $('#cardType').val(cardType).trigger('change');
+        updateResourceTypes(provider, cardType, '#resourcesType', '請選擇資源類型', resType);
         $('#batch').val($(this).data('batch'));
         $('#receivedDate').val($(this).data('receiveddate'));
         $('#imsi').val($(this).data('imsi'));

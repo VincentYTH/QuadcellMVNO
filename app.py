@@ -17,7 +17,7 @@ from modules.quadcell_api import QuadcellAPI
 from modules.simlessly_api import SimlesslyAPI
 from modules.worldmove_api import WorldMoveAPI
 from modules.sim_resources.manager import SimResourceManager
-from config.sim_resource import LOW_STOCK_THRESHOLD
+from modules.sim_resources.config_manager import SimConfigManager
 
 app = Flask(__name__)
 app.secret_key = 'QB($67:;P2G-h4qGo|f?'
@@ -189,30 +189,32 @@ def index():
     """主頁面 - 依供應商分組顯示 SIM 庫存（含低庫存警告）"""
     from sqlalchemy import func
 
+    # 動態獲取低庫存閾值
+    config = SimConfigManager.load_config()
+    low_stock_threshold = config.get('low_stock_threshold', 1000)
+
     # 查詢數據：按 Supplier 和 Type 分組統計數量
-    # 結果類似: [('MontNet', 'Physical SIM', 1000), ('MontNet', 'eSIM', 880), ...]
     inventory_counts = db.session.query(
         SimResource.supplier,
         SimResource.type,
         func.count(SimResource.id)
     ).filter(
-        SimResource.status == 'Available'  # <--- 只統計可用庫存
+        SimResource.status == 'Available'
     ).group_by(SimResource.supplier, SimResource.type).all()
     
     inventory_data = {}
     for supplier, card_type, count in inventory_counts:
-        if not supplier: # 處理供應商為空的情況
+        if not supplier:
             supplier = "Unknown"
         if supplier not in inventory_data:
             inventory_data[supplier] = {}
         inventory_data[supplier][card_type] = count
     
-    # 對供應商名稱進行排序 (可選，讓顯示順序固定)
     sorted_inventory = dict(sorted(inventory_data.items()))
     
     return render_template('index.html',
                            inventory_data=sorted_inventory,
-                           low_stock_threshold=LOW_STOCK_THRESHOLD,
+                           low_stock_threshold=low_stock_threshold,
                            full_width=False)
 
 # 供應商頁面

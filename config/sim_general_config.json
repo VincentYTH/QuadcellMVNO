@@ -1,0 +1,61 @@
+{
+  "card_types": [
+    "Physical SIM",
+    "Soft Profile",
+    "eSIM"
+  ],
+  "low_stock_threshold": 1000,
+  "provider_mapping": {
+    "CHKT": {
+      "Physical SIM": [],
+      "Soft Profile": [],
+      "eSIM": [
+        "Simlessly eSIM",
+        "Neware eSIM"
+      ]
+    },
+    "CTG": {
+      "Physical SIM": [],
+      "Soft Profile": [],
+      "eSIM": [
+        "Simlessly eSIM",
+        "Neware eSIM"
+      ]
+    },
+    "CUHK": {
+      "Physical SIM": [],
+      "Soft Profile": [],
+      "eSIM": [
+        "Simlessly eSIM",
+        "Neware eSIM"
+      ]
+    },
+    "Montnet": {
+      "Physical SIM": [
+        "45412_C",
+        "45412_H"
+      ],
+      "Soft Profile": [
+        "45412_C",
+        "45412_H"
+      ],
+      "eSIM": [
+        "45412_C",
+        "45412_H",
+        "Simlessly eSIM"
+      ]
+    }
+  },
+  "providers": [
+    "CHKT",
+    "CTG",
+    "CUHK",
+    "Montnet"
+  ],
+  "resources_types": [
+    "45412_C",
+    "45412_H",
+    "Simlessly eSIM",
+    "Neware eSIM"
+  ]
+}

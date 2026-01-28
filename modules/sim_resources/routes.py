@@ -7,7 +7,7 @@ import os
 from .manager import SimResourceManager
 from models.sim_resource import SimResource, db
 from flask import current_app
-from config.sim_resource import LOW_STOCK_THRESHOLD
+from .config_manager import SimConfigManager
 
 sim_resources_bp = Blueprint('sim_resources', __name__, url_prefix='/resources')
 
@@ -520,7 +520,141 @@ def batch_operation():
 def get_inventory_stats():
     """獲取庫存統計 API"""
     stats = SimResourceManager.get_inventory_stats()
+    
+    # 動態獲取閾值
+    config = SimConfigManager.load_config()
+    threshold = config.get('low_stock_threshold', 1000)
+    
     return jsonify({
         'stats': stats,
-        'threshold': LOW_STOCK_THRESHOLD
-    })    
+        'threshold': threshold
+    })  
+    
+@sim_resources_bp.route('/api/config/get', methods=['GET'])
+def get_config():
+    """獲取當前配置"""
+    try:
+        config = SimConfigManager.load_config()
+        return jsonify(config)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@sim_resources_bp.route('/api/config/save', methods=['POST'])
+def save_config():
+    """保存配置"""
+    try:
+        new_config = request.json
+        SimConfigManager.save_config(new_config)
+        return jsonify({'success': True, 'message': '配置已保存'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@sim_resources_bp.route('/api/config/check_usage', methods=['POST'])
+def check_config_usage():
+    """檢查配置項是否被使用"""
+    try:
+        data = request.json
+        category = data.get('category')
+        value = data.get('value')
+        
+        is_used = SimConfigManager.check_usage(category, value)
+        return jsonify({'used': is_used})
+    except Exception as e:
+        return jsonify({'used': True, 'error': str(e)}), 500 # 出錯時默認當作被使用，防止誤刪    
+    
+# 批量操作: 按導入IMSI
+@sim_resources_bp.route('/api/batch/resolve_imsis', methods=['POST'])
+def resolve_imsis_for_batch():
+    """解析批量操作導入的 IMSI Excel"""
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': '未上傳文件'}), 400
+    
+    file = request.files['file']
+    try:
+        # 智能讀取 Excel (兼容有無標題)
+        df = pd.read_excel(file, dtype=str)
+        df.columns = df.columns.str.strip() # 去除標題前後空格
+        
+        target_imsis = []
+        
+        # 策略 A: 尋找名為 'IMSI' (不分大小寫) 的列
+        imsi_col_name = next((col for col in df.columns if str(col).upper() == 'IMSI'), None)
+        
+        if imsi_col_name:
+            # 找到了標題，讀取該列
+            target_imsis = df[imsi_col_name].dropna().astype(str).str.strip().tolist()
+        else:
+            # 策略 B: 沒找到標題，嘗試讀取第一列 (Column A) 並檢查數據特徵
+            file.seek(0)
+            # header=None 表示不將第一行作標題
+            df_no_header = pd.read_excel(file, header=None, dtype=str)
+            
+            if not df_no_header.empty:
+                col_a = df_no_header.iloc[:, 0].dropna().astype(str).str.strip()
+                
+                # 檢查前幾行數據特徵 (取前5行樣本)
+                sample = col_a.head(5).tolist()
+                # 判斷樣本中是否包含符合 IMSI 格式 (15位數字) 的數據
+                valid_sample_count = sum(1 for x in sample if len(x) == 15 and x.isdigit())
+                
+                if len(sample) > 0 and (valid_sample_count / len(sample)) >= 0.5:
+                    target_imsis = col_a.tolist()
+                else:
+                    return jsonify({'success': False, 'message': '無法識別 IMSI 數據。請確保 Excel 包含 "IMSI" 標題，或 Column A 存放的是 15 位 IMSI 號碼。'}), 400
+            else:
+                return jsonify({'success': False, 'message': 'Excel 文件為空'}), 400
+
+        # --- 優化 2 & 3: 格式驗證與數據庫匹配 (保持原有優點) ---
+        valid_imsis = []
+        invalid_format_imsis = [] # 格式不對
+        
+        # 1. 格式過濾
+        for imsi in target_imsis:
+            if len(imsi) == 15 and imsi.isdigit():
+                valid_imsis.append(imsi)
+            else:
+                invalid_format_imsis.append(imsi)
+        
+        if not valid_imsis:
+            msg = "未找到有效的 15 位 IMSI。"
+            if invalid_format_imsis:
+                msg += f" 發現 {len(invalid_format_imsis)} 筆格式錯誤。"
+            return jsonify({'success': False, 'message': msg}), 400
+
+        # 2. 數據庫查找
+        resources = SimResource.query.filter(SimResource.imsi.in_(valid_imsis)).all()
+        
+        # 3. 建立映射並計算結果
+        found_map = {res.imsi: res.id for res in resources}
+        found_ids = list(found_map.values())
+        
+        # 計算未找到的 (存在於 Excel 但不在 DB)
+        not_found_imsis = list(set(valid_imsis) - set(found_map.keys()))
+        
+        # 4. 構建詳細反饋訊息
+        message = f"解析成功！"
+        details = []
+        
+        details.append(f"• 成功匹配庫存: {len(found_ids)} 筆 (將被操作)")
+        
+        if invalid_format_imsis:
+            details.append(f"• 忽略格式錯誤: {len(invalid_format_imsis)} 筆 (非15位數字)")
+            
+        if not_found_imsis:
+            details.append(f"• 庫存未找到: {len(not_found_imsis)} 筆 (請檢查 IMSI 是否正確)")
+            
+        full_message = message + "\n" + "\n".join(details)
+            
+        return jsonify({
+            'success': True,
+            'ids': found_ids,
+            'count': len(found_ids),
+            'message': full_message,
+            'invalid_count': len(invalid_format_imsis),
+            'not_found_count': len(not_found_imsis)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f"解析失敗: {str(e)}"}), 500  
