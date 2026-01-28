@@ -1,6 +1,9 @@
-from flask import Blueprint, render_template, request, jsonify, Response, send_file, send_from_directory, current_app
+from flask import Blueprint, render_template, request, jsonify, Response, send_file, url_for, send_from_directory, current_app
 from datetime import datetime
 import pandas as pd
+import io
+import zipfile
+import qrcode
 from io import StringIO
 import csv
 import os
@@ -452,102 +455,175 @@ def cancel_assignment():
 
 @sim_resources_bp.route('/api/export_custom', methods=['POST'])
 def export_custom_resources():
-    """自定義導出資源"""
+    """
+    自定義導出接口
+    功能: 
+    1. 導出 Excel (支持自定義欄位、搜索範圍)
+    2. 可選: 同步生成 eSIM LPA 的 QR Code 圖片並打包為 ZIP
+    """
     try:
+        # 1. 獲取請求參數
         data = request.json
-        scope = data.get('scope', 'search')  # 'search' or 'selected'
-        selected_ids = data.get('selected_ids', [])
-        search_params = data.get('search_params', {})
+        scope = data.get('scope') # 'selected' or 'search'
+        selected_ids = data.get('selected_ids')
+        search_params = data.get('search_params')
+        selected_columns = data.get('columns', []) # 用戶勾選的導出欄位
+        filter_customer = data.get('filter_customer')
+        filter_assigned_date = data.get('filter_assigned_date')
         
-        # 額外過濾器 (Customer & Assign Date)
-        extra_filters = {
-            'customer': data.get('filter_customer'),
-            'assigned_date': data.get('filter_assigned_date')
-        }
+        # 是否包含 QR Code
+        include_qrcode = data.get('include_qrcode', False)
         
-        # 獲取導出欄位配置
-        selected_columns = data.get('columns', [])
+        # 2. 構建查詢 (復用 Manager 的過濾邏輯)
+        query = SimResource.query
         
-        # 查詢數據
-        resources = SimResourceManager.get_resources_for_export(
-            scope=scope,
-            selected_ids=selected_ids,
-            search_params=search_params,
-            extra_filters=extra_filters
-        )
+        if scope == 'selected' and selected_ids:
+            query = query.filter(SimResource.id.in_(selected_ids))
+        elif scope == 'search' and search_params:
+            query = SimResourceManager._apply_search_filters(query, search_params)
+            query = SimResourceManager._apply_sorting(query, search_params)
+            
+        # 額外的 Modal 過濾器
+        if filter_customer and filter_customer != 'ALL':
+            query = query.filter(SimResource.customer == filter_customer)
+        if filter_assigned_date and filter_assigned_date != 'ALL':
+            query = query.filter(SimResource.assigned_date == filter_assigned_date)
+            
+        # 執行查詢
+        resources = query.all()
         
-        # 檢查 columns 中是否包含 'IMSI' (對應 field_mapping 中的 imsi) -> asc
-        if 'IMSI' in selected_columns:
-            # 使用 Python 排序，處理 None 值
-            resources.sort(key=lambda x: str(x.imsi) if x.imsi else '')
+        # 10,000 筆數量限制檢查
+        if include_qrcode and len(resources) > 10000:
+            return jsonify({
+                'error': f'QR Code 生成數量限制為 10,000 筆。當前篩選結果共 {len(resources)} 筆，請縮小範圍。'
+            }), 400
         
-        # 欄位映射 (DB Model屬性 -> 導出標題)
-        field_mapping = {
-            'imsi': 'IMSI',
-            'iccid': 'ICCID',
-            'msisdn': 'MSISDN',
-            'customer': 'Customer',
-            'assigned_date': 'Assign Date',
-            'remark': 'Remark',                        
-            'supplier': 'Provider',
-            'type': 'CardType',
-            'resources_type': 'ResourcesType',
-            'batch': 'Batch',
-            'received_date': 'ReceivedDate',
-            'ki': 'Ki',
-            'opc': 'OPC',
-            'lpa': 'LPA',
-            'pin1': 'PIN1',
-            'puk1': 'PUK1',
-            'pin2': 'PIN2',
-            'puk2': 'PUK2',
-            'status': 'Status',
-            'created_at': 'Created At',
-            'updated_at': 'Updated At'
-        }
-        
-        # 準備導出數據
-        output_data = []
+        if not resources:
+            return jsonify({'error': '沒有符合條件的數據可導出'}), 400
+
+        # 3. 準備 Excel 數據
+        export_list = []
         for res in resources:
-            row = {}
-            for col in selected_columns:
-                # 根據列名獲取對應的屬性值
-                db_field = next((k for k, v in field_mapping.items() if v == col), None)
-                if db_field:
-                    val = getattr(res, db_field)
-                    # 處理日期時間對象
-                    if isinstance(val, datetime):
-                        val = val.strftime('%Y-%m-%d %H:%M:%S')
-                    # 確保所有值轉為字符串，防止科學計數法
-                    row[col] = str(val) if val is not None else ''
-            output_data.append(row)
+            # 建立完整的數據字典 (Mapping DB欄位 -> Excel標題)
+            row = {
+                'IMSI': res.imsi,
+                'ICCID': res.iccid,
+                'MSISDN': res.msisdn,
+                'LPA': res.lpa,
+                'Ki': res.ki,
+                'OPC': res.opc,
+                'Customer': res.customer,
+                'Assign Date': res.assigned_date,
+                'Provider': res.supplier,
+                'CardType': res.type,
+                'ResourcesType': res.resources_type,
+                'Remark': res.remark,
+                'Status': res.status,
+                'Batch': res.batch,
+                'ReceivedDate': res.received_date,
+                'PIN1': res.pin1,
+                'PUK1': res.puk1,
+                'PIN2': res.pin2,
+                'PUK2': res.puk2,
+                'Created At': res.created_at,
+                'Updated At': res.updated_at
+            }
             
+            # 過濾欄位：只保留用戶勾選的 columns
+            # 注意：如果用戶沒勾選 IMSI 或 LPA，Excel 裡就不會顯示，
+            # 但我們在後續生成 QR Code 時依然可以直接訪問 res 對象，不受影響。
+            filtered_row = {k: v for k, v in row.items() if k in selected_columns}
+            export_list.append(filtered_row)
+
         # 創建 DataFrame
-        df = pd.DataFrame(output_data)
+        df = pd.DataFrame(export_list)
         
-        # 如果沒有數據，創建空 DataFrame 但保留列頭
-        if df.empty and selected_columns:
-            df = pd.DataFrame(columns=selected_columns)
+        # 4. 生成 Excel 字節流 (寫入內存)
+        excel_io = io.BytesIO()
+        with pd.ExcelWriter(excel_io, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Resources')
+        excel_data = excel_io.getvalue()
+        
+        # ==========================================
+        # 分支 A: 僅導出 Excel (無需 QR Code)
+        # ==========================================
+        if not include_qrcode:
+            excel_io.seek(0)
+            return send_file(
+                excel_io,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='sim_resources.xlsx'
+            )
+
+        # ==========================================
+        # 分支 B: 導出 ZIP (Excel + QR Codes)
+        # ==========================================
+        zip_io = io.BytesIO()
+        
+        # 使用 ZIP_DEFLATED 壓縮算法減少體積
+        with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # B1. 將 Excel 寫入 ZIP 根目錄
+            zf.writestr('sim_resources.xlsx', excel_data)
             
-        # 寫入 Excel (使用 BytesIO)
-        output = StringIO()
-        # 對於 Excel，我們需要使用 BytesIO
-        from io import BytesIO
-        excel_output = BytesIO()
-        
-        with pd.ExcelWriter(excel_output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False)
+            # B2. 遍歷生成 QR Code
+            # 優化：預先初始化 QR 工廠配置，避免在迴圈中重複初始化，提升 2000+ 筆數據的處理速度
+            # ERROR_CORRECT_L (7%) 對於純文本 LPA 足夠了，且生成的圖片體積最小
+            qr_factory = qrcode.QRCode(
+                version=1, 
+                error_correction=qrcode.constants.ERROR_CORRECT_L, 
+                box_size=10, 
+                border=2
+            )
             
-        excel_output.seek(0)
+            for res in resources:
+                # 只有 eSIM 且 LPA 有值時才生成
+                if res.type == 'eSIM' and res.lpa:
+                    try:
+                        qr_factory.clear() # 重置矩陣
+                        qr_factory.add_data(res.lpa)
+                        qr_factory.make(fit=True)
+                        
+                        # 生成圖片對象
+                        img = qr_factory.make_image(fill_color="black", back_color="white")
+                        
+                        # 保存圖片到內存流
+                        img_byte_arr = io.BytesIO()
+                        img.save(img_byte_arr, format='PNG')
+                        
+                        # 定義文件名：優先使用 IMSI，如果沒有則用 ICCID 或 ID
+                        # 這樣用戶解壓後能直接通過文件名對應到 Excel 裡的數據
+                        if res.iccid:
+                            fname = f"{res.iccid}.png"
+                        elif res.imsi:
+                            fname = f"{res.imsi}.png"
+                        else:
+                            fname = f"unknown_{res.id}.png"
+                        
+                        # 將圖片寫入 ZIP 的 QRCodes 文件夾下
+                        zf.writestr(f"QRCodes/{fname}", img_byte_arr.getvalue())
+                        
+                    except Exception as e:
+                        print(f"QR Gen Error Resource ID {res.id}: {e}")
+                        # 出錯時跳過該張圖片，不中斷整體導出
+                        continue
         
-        return Response(
-            excel_output.getvalue(),
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"Content-disposition": f"attachment; filename=sim_resources_export_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"}
+        # 指針歸位
+        zip_io.seek(0)
+        
+        # 返回 ZIP 文件
+        return send_file(
+            zip_io,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name='sim_resources_package.zip'
         )
-        
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        # 打印錯誤日誌方便後端調試
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'導出處理失敗: {str(e)}'}), 500
     
 @sim_resources_bp.route('/api/batch/operation', methods=['POST'])
 def batch_operation():
@@ -697,3 +773,33 @@ def resolve_imsis_for_batch():
         # import traceback
         # traceback.print_exc()
         return jsonify({'success': False, 'message': f"解析失敗: {str(e)}"}), 500
+    
+# 用於即時查看單個資源 QR Code 的接口
+@sim_resources_bp.route('/api/qrcode/view/<int:resource_id>')
+def get_resource_qrcode(resource_id):
+    """即時生成並返回單個資源的 QR Code 圖片流"""
+    resource = SimResource.query.get_or_404(resource_id)
+    
+    if not resource.lpa:
+        return jsonify({'success': False, 'message': '此資源沒有 LPA 數據'}), 404
+        
+    try:
+        # 生成 QR Code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L, # 使用低容錯率 (L) 以減小體積和加快生成速度
+            box_size=10,
+            border=2,
+        )
+        qr.add_data(resource.lpa)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # 轉為字節流
+        img_io = io.BytesIO()
+        img.save(img_io, 'PNG')
+        img_io.seek(0)
+        
+        return send_file(img_io, mimetype='image/png')
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'生成失敗: {str(e)}'}), 500    

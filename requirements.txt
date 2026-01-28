@@ -8,3 +8,5 @@ pycryptodome
 tqdm
 psycopg2-binary
 urllib3
+qrcode[pil] openpyxl
+xlsxwriter
