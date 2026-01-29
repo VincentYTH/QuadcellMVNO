@@ -442,16 +442,18 @@ def export_custom_resources():
     """
     try:
         data = request.json
+        
         scope = data.get('scope')
         selected_ids = data.get('selected_ids')
         search_params = data.get('search_params')
         selected_columns = data.get('columns', [])
         filter_customer = data.get('filter_customer')
         filter_assigned_date = data.get('filter_assigned_date')
+        
         include_qrcode = data.get('include_qrcode', False)
         only_qrcode = data.get('only_qrcode', False)
         
-        # 參數獲取
+        # 傳遞給 Manager (這裡已經在 manager.py 中修復了對 Range Object 的處理)
         resources = SimResourceManager.get_resources_for_export(
             scope=scope,
             selected_ids=selected_ids,
@@ -461,20 +463,6 @@ def export_custom_resources():
                 'assigned_date': filter_assigned_date
             }
         )
-        
-        # 構建查詢
-        query = SimResource.query
-        if scope == 'selected' and selected_ids:
-            query = query.filter(SimResource.id.in_(selected_ids))
-        elif scope == 'search' and search_params:
-            query = SimResourceManager._apply_search_filters(query, search_params)
-            query = SimResourceManager._apply_sorting(query, search_params)   
-        if filter_customer and filter_customer != 'ALL':
-            query = query.filter(SimResource.customer == filter_customer)
-        if filter_assigned_date and filter_assigned_date != 'ALL':
-            query = query.filter(SimResource.assigned_date == filter_assigned_date)
-            
-        resources = query.all()
         
         # 全局數量限制
         if len(resources) > 10000:

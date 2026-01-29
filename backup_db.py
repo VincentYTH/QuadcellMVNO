@@ -35,7 +35,7 @@ def ensure_dir(directory):
         os.makedirs(directory)
 
 def backup_sql(timestamp):
-    """執行 pg_dump 進行 SQL 備份"""
+    """執行 pg_dump 進行 SQL 備份 (包含所有欄位和結構，用於災難恢復)"""
     filename = f"{DB_NAME}_{timestamp}.sql"
     local_filepath = os.path.join(LOCAL_BACKUP_DIR, filename)
 
@@ -44,6 +44,7 @@ def backup_sql(timestamp):
     env = os.environ.copy()
     env['PGPASSWORD'] = DB_PASSWORD
 
+    # pg_dump 會自動備份所有欄位，包括 imsi_num 等優化欄位，這是正確的
     cmd = [
         PG_DUMP_PATH,
         "-h", DB_HOST,
@@ -65,7 +66,7 @@ def backup_sql(timestamp):
         return None
 
 def backup_excel(timestamp):
-    """使用 Pandas 讀取數據並導出為 Excel"""
+    """使用 Pandas 讀取數據並導出為 Excel (僅保留供人類閱讀的欄位)"""
     filename = f"{DB_NAME}_{timestamp}.xlsx"
     local_filepath = os.path.join(LOCAL_BACKUP_DIR, filename)
     
@@ -78,14 +79,20 @@ def backup_excel(timestamp):
         # 建立連接引擎
         engine = create_engine(db_uri)
         
-        # 讀取主要數據表 (sim_resources)
-        # 如果您有多個表，可以寫多個 query 並存入 Excel 的不同 Sheet
+        # 讀取主要數據表
         query = "SELECT * FROM sim_resources ORDER BY id ASC"
         
         # 使用 pandas 讀取數據
         df = pd.read_sql(query, engine)
         
-        # 導出到 Excel (需要 openpyxl 庫)
+        # [Optimize] 移除僅供系統優化使用的純數字欄位
+        # 這些欄位是為了 SQL 索引加速存在的，內部查閱不需要看到兩份同樣的號碼
+        cols_to_exclude = ['imsi_num', 'iccid_num', 'msisdn_num']
+        
+        # errors='ignore' 確保即使數據庫還沒更新這幾個欄位，備份腳本也不會報錯
+        df.drop(columns=cols_to_exclude, inplace=True, errors='ignore')
+        
+        # 導出到 Excel
         df.to_excel(local_filepath, index=False, engine='openpyxl')
         
         log(f"Excel 備份成功: {filename} (共 {len(df)} 筆數據)")
@@ -118,6 +125,9 @@ def clean_old_backups(directory):
     now = time.time()
     cutoff = now - (RETENTION_DAYS * 86400)
 
+    if not os.path.exists(directory):
+        return
+
     for filename in os.listdir(directory):
         filepath = os.path.join(directory, filename)
         # 同時清理 .sql 和 .xlsx
@@ -133,20 +143,18 @@ def clean_old_backups(directory):
 if __name__ == "__main__":
     ensure_dir(LOCAL_BACKUP_DIR)
     
-    # 使用相同的時間戳，讓兩個文件容易對應
     current_timestamp = datetime.now().strftime("%Y%m%d")
     
-    # 1. 執行 SQL 備份
+    # 1. 執行 SQL 備份 (完整結構)
     sql_path = backup_sql(current_timestamp)
     copy_to_network(sql_path)
     
-    # 2. 執行 Excel 備份
+    # 2. 執行 Excel 備份 (過濾後的人類可讀版本)
     excel_path = backup_excel(current_timestamp)
     copy_to_network(excel_path)
     
     # 3. 清理舊文件
     clean_old_backups(LOCAL_BACKUP_DIR)
-    if os.path.exists(NETWORK_BACKUP_DIR):
-        clean_old_backups(NETWORK_BACKUP_DIR)
+    clean_old_backups(NETWORK_BACKUP_DIR)
         
     log("=== 所有備份任務完成 ===")

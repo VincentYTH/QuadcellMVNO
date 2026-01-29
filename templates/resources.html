@@ -1565,25 +1565,45 @@ var selectedResourceIds = [];
 var availableColumns = ["IMSI", "ICCID", "MSISDN", "LPA", "Ki", "OPC", "Customer", "Assign Date", "Provider", "CardType", "ResourcesType", "Remark", "Status", "Batch", "ReceivedDate", "PIN1", "PUK1", "PIN2", "PUK2", "Created At", "Updated At"];
 var defaultCheckedCols = ['IMSI', 'ICCID', 'MSISDN'];
 
-// 支援段落模式下 checkbox value 為 JSON 對象的情況
+// 更新選中計數邏輯，正確計算 Range Mode 下的總數量
 function updateSelectedIds() {
     selectedResourceIds = [];
+    let totalCount = 0;
+
     $('.resource-checkbox:checked').each(function() {
         var val = $(this).val();
-        // 嘗試解析 JSON (針對 Range Mode)
         if (val.trim().startsWith('{')) {
+            // Range Mode: 解析對象
             try {
                 var rangeObj = JSON.parse(val);
                 selectedResourceIds.push(rangeObj);
+                
+                // 計算該段落的數量 (假設是純數字 IMSI)
+                if (rangeObj.start && rangeObj.end && !isNaN(rangeObj.start) && !isNaN(rangeObj.end)) {
+                    var count = Number(rangeObj.end) - Number(rangeObj.start) + 1;
+                    totalCount += count;
+                } else {
+                    totalCount += 1; // 無法計算時至少算作 1
+                }
             } catch(e) {
                 console.error("Value parsing error", e);
             }
         } else {
-            // Single Mode
+            // Single Mode: 直接計數
             selectedResourceIds.push(parseInt(val));
+            totalCount += 1;
         }
     });
-    $('.selected-count-display, #selectedCountDisplay, #opsSelectedCount').text(selectedResourceIds.length);
+
+    // 顯示「X 個 (Y 條記錄)」或者直接顯示總數
+    var displayText = selectedResourceIds.length;
+    if (totalCount > selectedResourceIds.length) {
+        // 如果是 Range Mode，顯示總數
+        displayText = totalCount; 
+        // 也可以顯示更詳細： `${totalCount} (in ${selectedResourceIds.length} groups)`
+    }
+    
+    $('.selected-count-display, #selectedCountDisplay, #opsSelectedCount').text(displayText);
 }
 
 // === 通用配置管理腳本 ===
@@ -2470,16 +2490,17 @@ $(document).ready(function() {
     $('#btnExecuteExport').off('click').click(function() {
         var scope = $('input[name="exportScope"]:checked').val();
         var includeQR = $('#exportWithQR').is(':checked');
-
-        // 全局數量限制檢查 (不再僅限於 includeQR)
-        let exportCount = (scope === 'selected') ? selectedResourceIds.length : totalSearchRecords;
         
-        if (exportCount > 10000) {
-            alert(`導出數量限制為 10,000 筆 (當前: ${exportCount})。\n請先使用過濾器縮小範圍，或分批導出。`);
-            return; 
+        if (scope === 'selected') {
+             if (selectedResourceIds.length > 10000) {
+                alert(`導出數量限制為 10,000 筆 (已選: ${selectedResourceIds.length})。\n請減少選擇數量。`);
+                return;
+            }
+            if (selectedResourceIds.length === 0) { 
+                alert("請先選擇至少一個項目！"); 
+                return; 
+            }
         }
-        
-        if (scope === 'selected' && selectedResourceIds.length === 0) { alert("請先選擇至少一個項目！"); return; }
         
         var selectedColumns = [];
         $('#columnList .column-item').each(function() { if ($(this).find('input[type="checkbox"]').is(':checked')) { selectedColumns.push($(this).data('col')); } });

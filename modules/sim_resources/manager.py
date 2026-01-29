@@ -143,6 +143,13 @@ class SimResourceManager:
         items = query.limit(per_page).offset((page - 1) * per_page).all()
         
         return PaginationResult(items, page, per_page, total_count)
+    
+    @staticmethod
+    def _apply_search_filters(query, params):
+        """組合屬性過濾和ID過濾"""
+        query = SimResourceManager._apply_attribute_filters(query, params)
+        query = SimResourceManager._apply_id_filters(query, params)
+        return query
 
     @staticmethod
     def _apply_attribute_filters(query, params):
@@ -251,51 +258,43 @@ class SimResourceManager:
     
     @staticmethod
     def get_distinct_filters(params, extra_filters=None):
-        # 獲取過濾器選項，用於下拉選單
         base_query = SimResource.query
+        # 這裡調用 _apply_search_filters，如果該方法未定義或報錯，就會導致 Load Failed
         base_query = SimResourceManager._apply_search_filters(base_query, params)
         
-        customers = base_query.with_entities(SimResource.customer)\
-            .filter(SimResource.customer != None, SimResource.customer != '')\
-            .distinct().order_by(SimResource.customer).all()
+        customers = base_query.with_entities(SimResource.customer).filter(SimResource.customer != None, SimResource.customer != '').distinct().order_by(SimResource.customer).all()
         
         date_query = base_query
         if extra_filters and extra_filters.get('customer') and extra_filters['customer'] != 'ALL':
             date_query = date_query.filter(SimResource.customer == extra_filters['customer'])
-
-        dates = date_query.with_entities(SimResource.assigned_date)\
-            .filter(SimResource.assigned_date != None, SimResource.assigned_date != '')\
-            .distinct().order_by(SimResource.assigned_date.desc()).all()
             
-        return {
-            'customers': [c[0] for c in customers],
-            'assigned_dates': [d[0] for d in dates]
-        }
+        dates = date_query.with_entities(SimResource.assigned_date).filter(SimResource.assigned_date != None, SimResource.assigned_date != '').distinct().order_by(SimResource.assigned_date.desc()).all()
+        
+        return {'customers': [c[0] for c in customers], 'assigned_dates': [d[0] for d in dates]}
     
+    # 導出邏輯 - 使用 _get_batch_targets 處理字典
     @staticmethod
     def get_resources_for_export(scope, selected_ids=None, search_params=None, extra_filters=None):
         query = SimResource.query
         
         if scope == 'selected' and selected_ids:
-            # 這裡原本直接用 in_(ids)，現在改用通用方法處理 Range Objects
+            # 這裡調用 _get_batch_targets 來解析混合了 ID 和 Range Object 的列表
             q, err = SimResourceManager._get_batch_targets('selected', selected_ids)
             if not err:
                 query = q
             else:
-                # 如果出錯（例如空列表），返回空查詢
-                return []
-                
+                return [] # 選擇無效
+        
         elif scope == 'search' and search_params:
             query = SimResourceManager._apply_search_filters(query, search_params)
             query = SimResourceManager._apply_sorting(query, search_params)
         
         if extra_filters:
-            customer = extra_filters.get('customer')
-            assigned_date = extra_filters.get('assigned_date')
-            if customer and customer != 'ALL':
-                query = query.filter(SimResource.customer == customer)
-            if assigned_date and assigned_date != 'ALL':
-                query = query.filter(SimResource.assigned_date == assigned_date)
+            if extra_filters.get('customer') and extra_filters['customer'] != 'ALL':
+                query = query.filter(SimResource.customer == extra_filters['customer'])
+            if extra_filters.get('assigned_date') and extra_filters['assigned_date'] != 'ALL':
+                query = query.filter(SimResource.assigned_date == extra_filters['assigned_date'])
+                
         return query.all()
 
     @staticmethod
@@ -613,35 +612,52 @@ class SimResourceManager:
             db.session.rollback()
             return {"success": False, "message": f"系統錯誤: {str(e)}"}
     
+    # 分離 ID 列表和 Range 對象列表，防止 "can't adapt type 'dict'" 錯誤
     @staticmethod
     def _get_batch_targets(scope, ids=None, start_imsi=None, end_imsi=None):
         if scope == 'selected':
-            if not ids: return None, "未選擇任何項目"
-            if len(ids) > 0 and isinstance(ids[0], dict):
-                conditions = []
-                for item in ids:
-                    start = item.get('start')
-                    end = item.get('end')
-                    batch = item.get('batch')
-                    if start and end:
-                        if str(start).isdigit() and str(end).isdigit():
-                             s_int, e_int = int(start), int(end)
-                             cond = and_(SimResource.imsi_num >= s_int, SimResource.imsi_num <= e_int, SimResource.batch == batch)
+            if not ids: return None, "未選擇項目"
+            
+            range_conds = []
+            simple_ids = []
+            
+            for item in ids:
+                if isinstance(item, dict):
+                    # 處理 Range Object {'start':..., 'end':..., 'batch':...}
+                    s, e, batch = item.get('start'), item.get('end'), item.get('batch')
+                    if s and e:
+                        if str(s).isdigit() and str(e).isdigit():
+                            range_conds.append(and_(
+                                SimResource.imsi_num >= int(s), 
+                                SimResource.imsi_num <= int(e),
+                                SimResource.batch == batch
+                            ))
                         else:
-                             cond = and_(SimResource.imsi >= start, SimResource.imsi <= end, SimResource.batch == batch)
-                        conditions.append(cond)
-                if not conditions: return None, "無效的選擇範圍數據"
-                return SimResource.query.filter(or_(*conditions)), None
-            else:
-                return SimResource.query.filter(SimResource.id.in_(ids)), None
+                            range_conds.append(and_(
+                                SimResource.imsi >= s, 
+                                SimResource.imsi <= e,
+                                SimResource.batch == batch
+                            ))
+                else:
+                    # 處理普通 ID
+                    simple_ids.append(item)
+            
+            # 組合條件
+            final_conds = []
+            if range_conds: final_conds.extend(range_conds)
+            if simple_ids: final_conds.append(SimResource.id.in_(simple_ids))
+            
+            if not final_conds: return None, "無效選擇"
+            return SimResource.query.filter(or_(*final_conds)), None
+            
         elif scope == 'range':
-            if not start_imsi or not end_imsi: return None, "請輸入起始和結束 IMSI"
+            # 手動輸入範圍
+            if not start_imsi or not end_imsi: return None, "請輸入範圍"
             if str(start_imsi).isdigit() and str(end_imsi).isdigit():
-                 s_int, e_int = int(start_imsi), int(end_imsi)
-                 return SimResource.query.filter(SimResource.imsi_num >= s_int, SimResource.imsi_num <= e_int), None
-            else:
-                 return SimResource.query.filter(SimResource.imsi >= start_imsi, SimResource.imsi <= end_imsi), None
-        return None, "無效的操作範圍"
+                return SimResource.query.filter(SimResource.imsi_num >= int(start_imsi), SimResource.imsi_num <= int(end_imsi)), None
+            return SimResource.query.filter(SimResource.imsi >= start_imsi, SimResource.imsi <= end_imsi), None
+            
+        return None, "未知範圍類型"
 
     @staticmethod
     def batch_update_resources(scope, ids, start_imsi, end_imsi, update_data):
