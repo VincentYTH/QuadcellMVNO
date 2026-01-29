@@ -1042,17 +1042,19 @@
                     <div class="mb-3 p-2 bg-light rounded border">
                         <div class="d-flex justify-content-between align-items-center">
                             <label class="form-label fw-bold small text-muted mb-0">eSIM 專用選項</label>
-                            </div>
+                        </div>
+                        
                         <div class="form-check form-switch mt-2">
                             <input class="form-check-input" type="checkbox" id="exportWithQR">
                             <label class="form-check-label small" for="exportWithQR">
                                 同步生成 QR Code 圖片包
                             </label>
                         </div>
+                        
                         <div class="form-text small text-info mt-1" id="qrWarning" style="display:none;">
                             <i class="bi bi-info-circle-fill"></i> 實時生成，一次性最多允許生成 10,000 個 QRcode
                         </div>
-                    </div>                   
+                    </div>               
                 </form>
             </div>
             <div class="modal-footer">
@@ -1431,15 +1433,17 @@ function toggleSearchFilters() {
     content.collapse('toggle');
 }
 
-// === 導出功能的 QR 開關邏輯 [修改] ===
+// === 導出功能的 QR 開關邏輯 ===
 $('#exportWithQR').change(function() {
     if($(this).is(':checked')) {
         $('#qrWarning').slideDown();
-        // 切換為 ZIP 下載樣式
-        $('#btnExecuteExport').html('<i class="bi bi-file-zip"></i> 確認導出 .zip');
+        // 啟用加密選項
+        $('#exportEncrypt').prop('disabled', false);
+        // 切換按鈕文字
+        $('#btnExecuteExport').html('<i class="bi bi-file-zip"></i> 確認導出 (Excel + Zip)');
     } else {
         $('#qrWarning').slideUp();
-        // 切換為 Excel 下載樣式
+        // 切換按鈕文字
         $('#btnExecuteExport').html('<i class="bi bi-download"></i> 確認導出 .xlsx');
     }
 });
@@ -1469,6 +1473,12 @@ window.viewQRCode = function(id, lpa) {
 };
 
 $(document).ready(function() {
+    // 確保頁面一打開，導出視窗就能知道是否已設置密碼
+    $.get('/resources/api/config/get', function(data) {
+        globalConfig = data;
+    });
+    const today = new Date().toISOString().split('T')[0];
+
     // 監聽摺疊事件，更新圖標和樣式
     $('#searchContent').on('hide.bs.collapse', function () {
         // 當開始隱藏時，更換箭頭，顯示簡易標題，減少 padding
@@ -1876,7 +1886,7 @@ function saveConfig() {
 
     // 獲取 General Tab 的值
     globalConfig.low_stock_threshold = parseInt($('#cfgLowStock').val()) || 1000;
-    
+
     $.ajax({
         url: '/resources/api/config/save',
         method: 'POST',
@@ -2044,6 +2054,15 @@ $(document).ready(function() {
     });
 
     $('#exportModal').on('show.bs.modal', function() {
+        // 檢查全局密碼是否存在 (決定是否完全禁用並提示)
+        if (!globalConfig.export_password) {
+            $('#exportEncrypt').prop('disabled', true);
+            $('#encryptHint').text('未設置全局密碼，請先至 [通用配置] 設定。').addClass('text-danger');
+        } else {
+            $('#encryptHint').text('使用 [通用配置] 中設定的密碼。').removeClass('text-danger');
+        }
+        
+        // 根據當前範圍選擇加載過濾器選項
         if ($('#scopeSearch').is(':checked')) {
             loadExportFilterOptions('all');
         } else {
@@ -2445,22 +2464,16 @@ $(document).ready(function() {
     $(document).on('click', '.btn-up', function() { var item = $(this).closest('.column-item'); var prev = item.prev('.column-item'); if (prev.length) item.insertBefore(prev); });
     $(document).on('click', '.btn-down', function() { var item = $(this).closest('.column-item'); var next = item.next('.column-item'); if (next.length) item.insertAfter(next); });
 
-    // 導出按鈕點擊事件
+    // 導出按鈕點擊事件 (實現分離雙下載)
     $('#btnExecuteExport').off('click').click(function() {
         var scope = $('input[name="exportScope"]:checked').val();
         var includeQR = $('#exportWithQR').is(':checked');
 
-        // 1. 數量限制檢查
+        // 數量限制檢查
         if (includeQR) {
-            let exportCount = 0;
-            if (scope === 'selected') {
-                exportCount = selectedResourceIds.length;
-            } else {
-                exportCount = totalSearchRecords;
-            }
-
+            let exportCount = (scope === 'selected') ? selectedResourceIds.length : totalSearchRecords;
             if (exportCount > 10000) {
-                alert(`QR Code 生成數量不能超過 10,000 筆 (當前: ${exportCount})。\n請先使用過濾器縮小範圍，或分批導出。`);
+                alert(`QR Code 生成數量限制為 10,000 筆 (當前: ${exportCount})。`);
                 return; 
             }
         }
@@ -2475,60 +2488,81 @@ $(document).ready(function() {
         var urlParams = new URLSearchParams(window.location.search);
         for(var pair of urlParams.entries()) { searchParams[pair[0]] = pair[1]; }
 
-        var payload = { 
+        // 基礎 Payload
+        var basePayload = { 
             scope: scope, 
             selected_ids: selectedResourceIds, 
             search_params: searchParams, 
             filter_customer: $('#exportCustomer').val(), 
             filter_assigned_date: $('#exportAssignDate').val(), 
-            columns: selectedColumns,
-            include_qrcode: includeQR
+            columns: selectedColumns
         };
 
         var btn = $(this);
         var originalText = btn.html();
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> 處理中...');
+
+        // 定義通用的下載函數
+        const downloadFile = (payload, isZipMode) => {
+            return fetch('/resources/api/export_custom', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify(payload) 
+            })
+            .then(response => { 
+                if (response.ok) return response.blob();
+                return response.json().then(json => { throw new Error(json.error || '導出失敗') }); 
+            })
+            .then(blob => { 
+                var url = window.URL.createObjectURL(blob); 
+                var a = document.createElement('a'); 
+                a.href = url; 
+                
+                var ext = isZipMode ? '.zip' : '.xlsx';
+                var prefix = isZipMode ? 'sim_qrcodes_' : 'sim_resources_export_';
+                var filename = prefix + new Date().toISOString().slice(0,19).replace(/[-:T]/g,'') + ext;
+                
+                a.download = filename; 
+                document.body.appendChild(a); 
+                a.click(); 
+                a.remove(); 
+            });
+        };
+
+        // 執行邏輯：
+        // 1. 始終下載 Excel
+        // 2. 如果勾選了 QR，則額外下載 Zip
         
-        fetch('/resources/api/export_custom', { 
-            method: 'POST', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify(payload) 
-        })
-        .then(response => { 
-            if (response.ok) {
-                // [關鍵] 判斷是否為 ZIP 類型
-                const contentType = response.headers.get('content-type');
-                const isZip = contentType && contentType.includes('zip');
-                return response.blob().then(blob => ({ blob, isZip }));
-            }
-            return response.json().then(json => { throw new Error(json.error || '導出失敗') }); 
-        })
-        .then(({ blob, isZip }) => { 
-            var url = window.URL.createObjectURL(blob); 
-            var a = document.createElement('a'); 
-            a.href = url; 
-            
-            // 根據類型決定副檔名 (.zip 或 .xlsx)
-            var ext = isZip ? '.zip' : '.xlsx';
-            var filename = 'sim_resources_export_' + new Date().toISOString().slice(0,19).replace(/[-:T]/g,'') + ext;
-            
-            a.download = filename; 
-            document.body.appendChild(a); 
-            a.click(); 
-            a.remove(); 
-            
-            // 下載觸發後，延遲關閉視窗，體驗更好
-            setTimeout(function() {
-                $('#exportModal').modal('hide'); 
-            }, 500);
-        })
-        .catch(error => { 
-            alert('錯誤: ' + error.message); 
-        })
-        .finally(() => { 
-            // 恢復按鈕狀態
-            btn.prop('disabled', false).html(originalText); 
-        });
+        // 任務 1: 下載 Excel (不含 QR)
+        var excelPayload = Object.assign({}, basePayload, { include_qrcode: false, only_qrcode: false });
+        
+        downloadFile(excelPayload, false)
+            .then(() => {
+                // 如果需要下載 QR Zip
+                if (includeQR) {
+                    // 延遲 1秒 觸發第二次下載，避免瀏覽器攔截
+                    setTimeout(() => {
+                        var zipPayload = Object.assign({}, basePayload, { include_qrcode: true, only_qrcode: true });
+                        downloadFile(zipPayload, true)
+                            .then(() => {
+                                btn.prop('disabled', false).html(originalText);
+                                $('#exportModal').modal('hide');
+                            })
+                            .catch(err => {
+                                alert('QR Zip 下載失敗: ' + err.message);
+                                btn.prop('disabled', false).html(originalText);
+                            });
+                    }, 1000);
+                } else {
+                    // 只有 Excel，直接結束
+                    btn.prop('disabled', false).html(originalText);
+                    setTimeout(() => { $('#exportModal').modal('hide'); }, 500);
+                }
+            })
+            .catch(err => {
+                alert('Excel 導出失敗: ' + err.message);
+                btn.prop('disabled', false).html(originalText);
+            });
     });
 
     // 新增/編輯資源 Modal 的聯動

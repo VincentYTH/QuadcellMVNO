@@ -11,6 +11,17 @@ from .manager import SimResourceManager
 from models.sim_resource import SimResource, db
 from .config_manager import SimConfigManager
 
+# 引入 OpenPyXL 樣式組件 (用於 Excel 美化)
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
+
+try:
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    HAS_OPENPYXL_STYLES = True
+except ImportError:
+    HAS_OPENPYXL_STYLES = False
+
 sim_resources_bp = Blueprint('sim_resources', __name__, url_prefix='/resources')
 
 # SIM資源管理頁面 - 使用全寬模式
@@ -453,101 +464,137 @@ def cancel_assignment():
     )
     return jsonify(result)
 
+# 導出接口
 @sim_resources_bp.route('/api/export_custom', methods=['POST'])
 def export_custom_resources():
     """
-    自定義導出接口
-    功能: 
-    1. 導出 Excel (支持自定義欄位、搜索範圍)
-    2. 可選: 同步生成 eSIM LPA 的 QR Code 圖片並打包為 ZIP
+    自定義導出接口 (最終美化版：Excel 格式美化 + QR Zip 分離下載)
     """
     try:
-        # 1. 獲取請求參數
         data = request.json
-        scope = data.get('scope') # 'selected' or 'search'
+        # 參數獲取
+        scope = data.get('scope')
         selected_ids = data.get('selected_ids')
         search_params = data.get('search_params')
-        selected_columns = data.get('columns', []) # 用戶勾選的導出欄位
+        selected_columns = data.get('columns', [])
         filter_customer = data.get('filter_customer')
         filter_assigned_date = data.get('filter_assigned_date')
         
-        # 是否包含 QR Code
         include_qrcode = data.get('include_qrcode', False)
+        only_qrcode = data.get('only_qrcode', False)
         
-        # 2. 構建查詢 (復用 Manager 的過濾邏輯)
+        # 構建查詢
         query = SimResource.query
-        
         if scope == 'selected' and selected_ids:
             query = query.filter(SimResource.id.in_(selected_ids))
         elif scope == 'search' and search_params:
             query = SimResourceManager._apply_search_filters(query, search_params)
-            query = SimResourceManager._apply_sorting(query, search_params)
-            
-        # 額外的 Modal 過濾器
+            query = SimResourceManager._apply_sorting(query, search_params)   
         if filter_customer and filter_customer != 'ALL':
             query = query.filter(SimResource.customer == filter_customer)
         if filter_assigned_date and filter_assigned_date != 'ALL':
             query = query.filter(SimResource.assigned_date == filter_assigned_date)
             
-        # 執行查詢
         resources = query.all()
         
-        # 10,000 筆數量限制檢查
         if include_qrcode and len(resources) > 10000:
-            return jsonify({
-                'error': f'QR Code 生成數量限制為 10,000 筆。當前篩選結果共 {len(resources)} 筆，請縮小範圍。'
-            }), 400
+            return jsonify({'error': f'QR Code 生成數量限制為 10,000 筆。'}), 400
         
         if not resources:
             return jsonify({'error': '沒有符合條件的數據可導出'}), 400
 
-        # 3. 準備 Excel 數據
-        export_list = []
-        for res in resources:
-            # 建立完整的數據字典 (Mapping DB欄位 -> Excel標題)
-            row = {
-                'IMSI': res.imsi,
-                'ICCID': res.iccid,
-                'MSISDN': res.msisdn,
-                'LPA': res.lpa,
-                'Ki': res.ki,
-                'OPC': res.opc,
-                'Customer': res.customer,
-                'Assign Date': res.assigned_date,
-                'Provider': res.supplier,
-                'CardType': res.type,
-                'ResourcesType': res.resources_type,
-                'Remark': res.remark,
-                'Status': res.status,
-                'Batch': res.batch,
-                'ReceivedDate': res.received_date,
-                'PIN1': res.pin1,
-                'PUK1': res.puk1,
-                'PIN2': res.pin2,
-                'PUK2': res.puk2,
-                'Created At': res.created_at,
-                'Updated At': res.updated_at
-            }
-            
-            # 過濾欄位：只保留用戶勾選的 columns
-            # 注意：如果用戶沒勾選 IMSI 或 LPA，Excel 裡就不會顯示，
-            # 但我們在後續生成 QR Code 時依然可以直接訪問 res 對象，不受影響。
-            filtered_row = {k: v for k, v in row.items() if k in selected_columns}
-            export_list.append(filtered_row)
+        # =========================================================
+        # 分支 A: 導出 Excel (美化版)
+        # =========================================================
+        if not only_qrcode:
+            # 檢查是否具備美化所需的庫
+            if not HAS_OPENPYXL_STYLES:
+                return jsonify({'error': "導出失敗: 缺少 'openpyxl' 庫，無法執行格式美化。請聯繫管理員執行 'pip install openpyxl'"}), 500
 
-        # 創建 DataFrame
-        df = pd.DataFrame(export_list)
-        
-        # 4. 生成 Excel 字節流 (寫入內存)
-        excel_io = io.BytesIO()
-        with pd.ExcelWriter(excel_io, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Resources')
-        excel_data = excel_io.getvalue()
-        
-        # ==========================================
-        # 分支 A: 僅導出 Excel (無需 QR Code)
-        # ==========================================
-        if not include_qrcode:
+            export_list = []
+            for res in resources:
+                row = {
+                    'IMSI': res.imsi, 'ICCID': res.iccid, 'MSISDN': res.msisdn, 'LPA': res.lpa,
+                    'Ki': res.ki, 'OPC': res.opc, 'Customer': res.customer, 'Assign Date': res.assigned_date,
+                    'Provider': res.supplier, 'CardType': res.type, 'ResourcesType': res.resources_type,
+                    'Remark': res.remark, 'Status': res.status, 'Batch': res.batch, 'ReceivedDate': res.received_date,
+                    'PIN1': res.pin1, 'PUK1': res.puk1, 'PIN2': res.pin2, 'PUK2': res.puk2,
+                    'Created At': res.created_at, 'Updated At': res.updated_at
+                }
+                filtered_row = {k: v for k, v in row.items() if k in selected_columns}
+                export_list.append(filtered_row)
+
+            df = pd.DataFrame(export_list)
+            excel_io = io.BytesIO()
+            
+            # 使用 openpyxl 引擎進行寫入
+            with pd.ExcelWriter(excel_io, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Resources')
+                
+                # === 開始美化 Excel ===
+                workbook = writer.book
+                worksheet = writer.sheets['Resources']
+                
+                # 1. 定義樣式對象
+                # 字體: Calibri, Size 10
+                font_style = Font(name='Calibri', size=10)
+                # 標題字體: Calibri, Size 10, 粗體
+                font_header = Font(name='Calibri', size=10, bold=True)
+                
+                # 邊框: 四周細線
+                thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
+                                     top=Side(style='thin'), bottom=Side(style='thin'))
+                
+                # 對齊: 靠左+垂直置中
+                align_data = Alignment(horizontal='left', vertical='center', wrap_text=False)
+                align_header = Alignment(horizontal='left', vertical='center', wrap_text=False)
+                
+                # 填充: 標題黃色 (Solid Yellow)
+                fill_header = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+
+                # 2. 遍歷所有單元格應用樣式
+                max_row = worksheet.max_row
+                max_col = worksheet.max_column
+
+                # 用於計算列寬
+                col_widths = {}
+
+                # iter_rows 是一個生成器，逐行處理
+                for row_idx, row in enumerate(worksheet.iter_rows(min_row=1, max_row=max_row, max_col=max_col), start=1):
+                    for col_idx, cell in enumerate(row, start=1):
+                        cell.border = thin_border  # 全局加上邊框
+                        
+                        # 獲取內容長度用於計算列寬
+                        val = str(cell.value) if cell.value else ""
+                        # 計算字元長度 (稍微加寬一點 buffer)
+                        # 注意：中文字符可能需要額外計算，這裡做簡單長度估計
+                        length = len(val)
+                        # 如果是標題行，長度要考慮過濾箭頭的空間，多加一點
+                        if row_idx == 1:
+                            length += 4 
+                            
+                        current_w = col_widths.get(col_idx, 0)
+                        col_widths[col_idx] = max(current_w, length)
+
+                        # 區分標題行和內容行
+                        if row_idx == 1:
+                            # 標題行樣式
+                            cell.font = font_header
+                            cell.alignment = align_header
+                            cell.fill = fill_header
+                        else:
+                            # 內容行樣式
+                            cell.font = font_style
+                            cell.alignment = align_data
+                
+                # 3. 設置自動列寬
+                for col_idx, width in col_widths.items():
+                    col_letter = get_column_letter(col_idx)
+                    # 限制最大寬度為 60，最小寬度為 10 (避免太窄或太寬)
+                    # 基礎係數 1.2 讓顯示更舒適
+                    adjusted_width = min(max(width * 1.2, 10), 60)
+                    worksheet.column_dimensions[col_letter].width = adjusted_width
+
             excel_io.seek(0)
             return send_file(
                 excel_io,
@@ -556,71 +603,47 @@ def export_custom_resources():
                 download_name='sim_resources.xlsx'
             )
 
-        # ==========================================
-        # 分支 B: 導出 ZIP (Excel + QR Codes)
-        # ==========================================
-        zip_io = io.BytesIO()
-        
-        # 使用 ZIP_DEFLATED 壓縮算法減少體積
-        with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # B1. 將 Excel 寫入 ZIP 根目錄
-            zf.writestr('sim_resources.xlsx', excel_data)
+        # =========================================================
+        # 分支 B: 導出 ZIP (僅包含 QR Codes)
+        # =========================================================
+        else:
+            zip_io = io.BytesIO()
             
-            # B2. 遍歷生成 QR Code
-            # 優化：預先初始化 QR 工廠配置，避免在迴圈中重複初始化，提升 2000+ 筆數據的處理速度
-            # ERROR_CORRECT_L (7%) 對於純文本 LPA 足夠了，且生成的圖片體積最小
-            qr_factory = qrcode.QRCode(
-                version=1, 
-                error_correction=qrcode.constants.ERROR_CORRECT_L, 
-                box_size=10, 
-                border=2
+            # 使用標準 zipfile，無加密
+            with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zf:
+                qr_factory = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=2)
+                
+                for res in resources:
+                    if res.type == 'eSIM' and res.lpa:
+                        try:
+                            qr_factory.clear()
+                            qr_factory.add_data(res.lpa)
+                            qr_factory.make(fit=True)
+                            img = qr_factory.make_image(fill_color="black", back_color="white")
+                            
+                            img_byte_arr = io.BytesIO()
+                            img.save(img_byte_arr, format='PNG')
+                            
+                            if res.iccid: fname = f"{res.iccid}.png"
+                            elif res.imsi: fname = f"{res.imsi}.png"
+                            else: fname = f"unknown_{res.id}.png"
+                            
+                            # 直接寫入 Zip 根目錄
+                            zf.writestr(fname, img_byte_arr.getvalue())
+                            
+                        except Exception as e:
+                            print(f"QR Gen Error Resource ID {res.id}: {e}")
+                            continue
+            
+            zip_io.seek(0)
+            return send_file(
+                zip_io,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name='qrcodes_package.zip'
             )
-            
-            for res in resources:
-                # 只有 eSIM 且 LPA 有值時才生成
-                if res.type == 'eSIM' and res.lpa:
-                    try:
-                        qr_factory.clear() # 重置矩陣
-                        qr_factory.add_data(res.lpa)
-                        qr_factory.make(fit=True)
-                        
-                        # 生成圖片對象
-                        img = qr_factory.make_image(fill_color="black", back_color="white")
-                        
-                        # 保存圖片到內存流
-                        img_byte_arr = io.BytesIO()
-                        img.save(img_byte_arr, format='PNG')
-                        
-                        # 定義文件名：優先使用 IMSI，如果沒有則用 ICCID 或 ID
-                        # 這樣用戶解壓後能直接通過文件名對應到 Excel 裡的數據
-                        if res.iccid:
-                            fname = f"{res.iccid}.png"
-                        elif res.imsi:
-                            fname = f"{res.imsi}.png"
-                        else:
-                            fname = f"unknown_{res.id}.png"
-                        
-                        # 將圖片寫入 ZIP 的 QRCodes 文件夾下
-                        zf.writestr(f"QRCodes/{fname}", img_byte_arr.getvalue())
-                        
-                    except Exception as e:
-                        print(f"QR Gen Error Resource ID {res.id}: {e}")
-                        # 出錯時跳過該張圖片，不中斷整體導出
-                        continue
-        
-        # 指針歸位
-        zip_io.seek(0)
-        
-        # 返回 ZIP 文件
-        return send_file(
-            zip_io,
-            mimetype='application/zip',
-            as_attachment=True,
-            download_name='sim_resources_package.zip'
-        )
 
     except Exception as e:
-        # 打印錯誤日誌方便後端調試
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'導出處理失敗: {str(e)}'}), 500

@@ -4,6 +4,7 @@
     "Soft Profile",
     "eSIM"
   ],
+  "export_password": "Quadcell",
   "low_stock_threshold": 1000,
   "provider_mapping": {
     "CHKT": {
