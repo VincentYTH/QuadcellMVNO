@@ -8,11 +8,12 @@ from models.sim_resource import SimResource, db
 from .config_manager import SimConfigManager
 
 class PaginationResult:
-    def __init__(self, items, page, per_page, total):
+    def __init__(self, items, page, per_page, total, total_records=None):
         self.items = items
         self.page = page
         self.per_page = per_page
         self.total = total
+        self.total_records = total_records if total_records is not None else total
         self.pages = int(math.ceil(total / per_page)) if per_page else 0
         self.has_prev = page > 1
         self.has_next = page < self.pages
@@ -35,16 +36,14 @@ class SimResourceManager:
     
     @staticmethod
     def get_all_resources(query_params, page=1, per_page=50):
-        """獲取SIM資源列表（單條模式）"""
         query = SimResource.query
-        query = SimResourceManager._apply_attribute_filters(query, query_params)
-        query = SimResourceManager._apply_id_filters(query, query_params)
+        query = SimResourceManager._apply_search_filters(query, query_params)
         query = SimResourceManager._apply_sorting(query, query_params)
         return query.paginate(page=page, per_page=per_page, error_out=False)
 
     @staticmethod
     def get_grouped_resources(query_params, page=1, per_page=50):
-        """獲取分組後的資源列表 (Range Mode 優化版)"""
+        # 1. 基礎過濾
         base_query = SimResource.query
         base_query = SimResourceManager._apply_attribute_filters(base_query, query_params)
         
@@ -54,155 +53,169 @@ class SimResourceManager:
             SimResource.assigned_date, SimResource.remark
         ]
         
-        # 優先使用 imsi_num 進行排序
         order_col = case((SimResource.imsi_num != None, SimResource.imsi_num), else_=cast(SimResource.imsi, db.Numeric))
-        
-        # Gaps-and-Islands 計算
         diff_val = order_col - func.row_number().over(order_by=order_col)
 
         subquery = base_query.with_entities(
-            SimResource.id,
-            *group_cols,
-            SimResource.imsi,
-            SimResource.imsi_num,
-            SimResource.iccid,
-            SimResource.iccid_num,  # 確保這兩個欄位在數據庫已存在
-            SimResource.msisdn,
-            SimResource.msisdn_num, # 確保這兩個欄位在數據庫已存在
-            SimResource.created_at,
-            SimResource.updated_at,
+            SimResource.id, *group_cols, 
+            SimResource.imsi, SimResource.imsi_num, 
+            SimResource.iccid, SimResource.iccid_num, 
+            SimResource.msisdn, SimResource.msisdn_num, 
+            SimResource.created_at, SimResource.updated_at,
             diff_val.label('imsi_grp')
         ).subquery()
         
         group_by_args = [getattr(subquery.c, col.name) for col in group_cols] + [subquery.c.imsi_grp]
         
-        # 聚合查詢
+        # 2. 構建聚合查詢
         query = db.session.query(
             func.min(subquery.c.id).label('id'),
             *[getattr(subquery.c, col.name) for col in group_cols],
             func.count().label('count'),
-            func.min(subquery.c.imsi).label('start_imsi'),
-            func.max(subquery.c.imsi).label('end_imsi'),
-            func.min(subquery.c.iccid).label('start_iccid'),
-            func.max(subquery.c.iccid).label('end_iccid'),
-            func.min(subquery.c.msisdn).label('start_msisdn'),
-            func.max(subquery.c.msisdn).label('end_msisdn'),
-            func.max(subquery.c.created_at).label('created_at'),
-            func.max(subquery.c.updated_at).label('updated_at'),
-            
-            # [Optimize Bug 2] 聚合數字欄位用於過濾
-            func.min(subquery.c.iccid_num).label('min_iccid_num'),
-            func.max(subquery.c.iccid_num).label('max_iccid_num'),
-            func.min(subquery.c.msisdn_num).label('min_msisdn_num'),
-            func.max(subquery.c.msisdn_num).label('max_msisdn_num')
+            func.min(subquery.c.imsi).label('start_imsi'), func.max(subquery.c.imsi).label('end_imsi'),
+            func.min(subquery.c.iccid).label('start_iccid'), func.max(subquery.c.iccid).label('end_iccid'),
+            func.min(subquery.c.msisdn).label('start_msisdn'), func.max(subquery.c.msisdn).label('end_msisdn'),
+            func.max(subquery.c.created_at).label('created_at'), func.max(subquery.c.updated_at).label('updated_at'),
+            func.min(subquery.c.imsi_num).label('min_imsi_num'), func.max(subquery.c.imsi_num).label('max_imsi_num'),
+            func.min(subquery.c.iccid_num).label('min_iccid_num'), func.max(subquery.c.iccid_num).label('max_iccid_num'),
+            func.min(subquery.c.msisdn_num).label('min_msisdn_num'), func.max(subquery.c.msisdn_num).label('max_msisdn_num')
         ).group_by(*group_by_args)
         
-        # [Optimize Bug 2] 範圍重疊過濾器 (Range Overlap Filter)
+        # 3. 應用範圍過濾 (HAVING)
         def apply_range_filter(q, col_min_num, col_max_num, search_val):
             if not search_val: return q
             val = search_val.strip()
             
-            # 1. 範圍搜索 (Start - End)
+            # 批量搜索支持 (Batch Search in Range Mode)
+            # 邏輯：如果段落範圍 (Min ~ Max) 包含列表中的任意一個數字，則顯示該段落
+            if ',' in val or ' ' in val or '\n' in val:
+                # 1. 提取所有有效數字
+                nums = [int(x) for x in re.split(r'[,\s\n]+', val) if x.strip().isdigit()]
+                
+                if nums:
+                    # 2. 構建 OR 條件: (Min <= v1 <= Max) OR (Min <= v2 <= Max) ...
+                    # 這會檢查段落是否包含這些特定的號碼
+                    conditions = []
+                    for v in nums:
+                        conditions.append((col_min_num <= v) & (col_max_num >= v))
+                    
+                    if conditions:
+                        return q.having(or_(*conditions))
+            
+            # 範圍搜索 (Start - End)
+            # 邏輯：兩個範圍是否有重疊 (Overlap)
             if '-' in val:
                 try:
                     parts = val.split('-')
-                    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                        s, e = int(parts[0]), int(parts[1])
-                        # 檢查兩個範圍是否有交集: max >= search_start AND min <= search_end
+                    if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
+                        s, e = int(parts[0].strip()), int(parts[1].strip())
                         return q.having((col_max_num >= s) & (col_min_num <= e))
                 except: pass
             
-            # 2. 單個值搜索 (檢查是否包含在該段落內)
+            # 單個值搜索
+            # 邏輯：值是否在範圍內
             if val.isdigit():
-                # 兼容 20 位 ICCID (超出普通 Int 範圍，Python int 自動處理大數)
                 v = int(val)
-                # 檢查: min <= search_val <= max
                 return q.having((col_min_num <= v) & (col_max_num >= v))
             
-            # 3. 模糊搜索 (Fallback)
-            # 注意：在 Range Mode 下，這裡只能對聚合結果過濾，可能不準確，建議用戶搜索數字
-            return q 
+            # 模糊搜索 (僅作為最後手段，對聚合後的字符串進行匹配，性能較差)
+            # 注意：這裡無法對數字列做 ilike，如果前面都沒命中，這裡通常不會執行或無效
+            return q
 
-        # 應用 IMSI 過濾
+        has_range_filter = False
         if query_params.get('imsi'):
-            imsi_min = func.min(subquery.c.imsi_num)
-            imsi_max = func.max(subquery.c.imsi_num)
-            query = apply_range_filter(query, imsi_min, imsi_max, query_params.get('imsi'))
-            
-        # [Fix Bug 2] 應用 ICCID 過濾 (使用新的 num 聚合)
+            query = apply_range_filter(query, func.min(subquery.c.imsi_num), func.max(subquery.c.imsi_num), query_params.get('imsi'))
+            has_range_filter = True
         if query_params.get('iccid'):
             query = apply_range_filter(query, func.min(subquery.c.iccid_num), func.max(subquery.c.iccid_num), query_params.get('iccid'))
-
-        # [Fix Bug 2] 應用 MSISDN 過濾 (使用新的 num 聚合)
+            has_range_filter = True
         if query_params.get('msisdn'):
             query = apply_range_filter(query, func.min(subquery.c.msisdn_num), func.max(subquery.c.msisdn_num), query_params.get('msisdn'))
+            has_range_filter = True
         
         query = query.order_by(desc('assigned_date').nullslast(), desc('updated_at').nullslast(), asc('start_imsi'))
         
-        total_count = query.count()
-        items = query.limit(per_page).offset((page - 1) * per_page).all()
+        total_groups = query.count()
         
-        return PaginationResult(items, page, per_page, total_count)
+        if not has_range_filter:
+            total_records = base_query.count()
+        else:
+            count_subquery = query.subquery()
+            total_records = db.session.query(func.sum(count_subquery.c.count)).scalar() or 0
+
+        items = query.limit(per_page).offset((page - 1) * per_page).all()
+        return PaginationResult(items, page, per_page, total_groups, total_records)
     
     @staticmethod
     def _apply_search_filters(query, params):
-        """組合屬性過濾和ID過濾"""
         query = SimResourceManager._apply_attribute_filters(query, params)
         query = SimResourceManager._apply_id_filters(query, params)
         return query
 
     @staticmethod
     def _apply_attribute_filters(query, params):
-        if params.get('provider'): query = query.filter(SimResource.supplier == params["provider"])
-        if params.get('card_type'): query = query.filter(SimResource.type == params["card_type"])
-        if params.get('resources_type'): query = query.filter(SimResource.resources_type == params["resources_type"])
-        if params.get('status'): query = query.filter(SimResource.status == params['status'])
-        if params.get('customer'): query = query.filter(SimResource.customer == params["customer"])
-        if params.get('received_date'): query = query.filter(SimResource.received_date == params["received_date"])
+        for field in ['provider', 'card_type', 'resources_type', 'status', 'customer', 'received_date']:
+            if params.get(field): 
+                db_field = 'supplier' if field == 'provider' else 'type' if field == 'card_type' else field
+                query = query.filter(getattr(SimResource, db_field) == params[field])
+        
         if params.get('batch'): query = query.filter(SimResource.batch.ilike(f'%{params["batch"]}%'))
-        if params.get('remark'): query = query.filter(SimResource.remark.ilike(f'%{params["remark"]}%'))    
-        start_date, end_date = params.get('assigned_date_start'), params.get('assigned_date_end')
-        if start_date and end_date: query = query.filter(SimResource.assigned_date >= start_date, SimResource.assigned_date <= end_date)
-        elif start_date: query = query.filter(SimResource.assigned_date >= start_date)
-        elif end_date: query = query.filter(SimResource.assigned_date <= end_date)
+        if params.get('remark'): query = query.filter(SimResource.remark.ilike(f'%{params["remark"]}%'))
+        
+        s_date, e_date = params.get('assigned_date_start'), params.get('assigned_date_end')
+        if s_date: query = query.filter(SimResource.assigned_date >= s_date)
+        if e_date: query = query.filter(SimResource.assigned_date <= e_date)
         return query
 
     @staticmethod
     def _apply_id_filters(query, params):
-        def apply_filter(q, field_num, field_str, value):
+        # [Optimize] 批量搜索與數字索引優化
+        def filter_id(q, num_col, str_col, value):
             if not value: return q
             val = value.strip()
-            if '-' in val:
+            
+            # 1. [Feature] 批量搜索 (Batch Search)
+            # 檢查是否包含分隔符 (逗號、空格、換行)
+            if ',' in val or ' ' in val or '\n' in val:
+                # 使用正則分割，過濾掉空字符串
+                raw_items = [x.strip() for x in re.split(r'[,\s\n]+', val) if x.strip()]
+                
+                if raw_items:
+                    # 嘗試將所有項目轉為數字 (用於數字索引查詢)
+                    # 注意：如果用戶混合輸入數字和非數字，只提取數字部分用於 num_col 查詢
+                    num_items = [int(x) for x in raw_items if x.isdigit()]
+                    
+                    if num_col is not None and len(num_items) > 0:
+                        # 優先使用數字列 IN 查詢 (極快)
+                        # 如果輸入的全部是數字，直接走這條路
+                        if len(num_items) == len(raw_items):
+                            return q.filter(num_col.in_(num_items))
+                    
+                    # 如果包含非數字或無數字列，退回字符串 IN 查詢
+                    return q.filter(str_col.in_(raw_items))
+
+            # 2. 範圍搜索
+            if '-' in val: 
                 try:
                     parts = val.split('-')
                     if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                        if field_num is not None:
-                            return q.filter(field_num >= int(parts[0]), field_num <= int(parts[1]))
-                        return q.filter(field_str >= parts[0], field_str <= parts[1])
+                        if num_col is not None:
+                            return q.filter(num_col >= int(parts[0]), num_col <= int(parts[1]))
+                        return q.filter(str_col >= parts[0], str_col <= parts[1])
                 except: pass
             
-            # 精確搜索 (長數字)
-            if val.isdigit() and len(val) > 5:
-                if field_num is not None:
-                    # 使用數字欄位精確匹配，性能遠高於字符串匹配
-                    return q.filter(field_num == int(val))
-                return q.filter(field_str == val)
+            # 3. 精確數字搜索
+            if val.isdigit() and len(val) > 5 and num_col is not None: 
+                return q.filter(num_col == int(val))
             
-            return q.filter(field_str.ilike(f'%{val}%'))
+            # 4. 模糊搜索 (Fallback)
+            return q.filter(str_col.ilike(f'%{val}%'))
 
-        query = apply_filter(query, SimResource.imsi_num, SimResource.imsi, params.get('imsi'))
-        # [Optimize] 這裡假設 SimResource 已經有了 iccid_num 和 msisdn_num 屬性
-        # 如果用戶還沒更新 models.py 並重啟，這裡會報錯，導致 'Load Failed'
-        if hasattr(SimResource, 'iccid_num'):
-            query = apply_filter(query, SimResource.iccid_num, SimResource.iccid, params.get('iccid'))
-        else:
-            query = apply_filter(query, None, SimResource.iccid, params.get('iccid'))
-            
-        if hasattr(SimResource, 'msisdn_num'):
-            query = apply_filter(query, SimResource.msisdn_num, SimResource.msisdn, params.get('msisdn'))
-        else:
-            query = apply_filter(query, None, SimResource.msisdn, params.get('msisdn'))
-            
+        query = filter_id(query, SimResource.imsi_num, SimResource.imsi, params.get('imsi'))
+        
+        # 安全獲取 iccid_num/msisdn_num，兼容舊 DB 結構
+        query = filter_id(query, getattr(SimResource, 'iccid_num', None), SimResource.iccid, params.get('iccid'))
+        query = filter_id(query, getattr(SimResource, 'msisdn_num', None), SimResource.msisdn, params.get('msisdn'))
         return query
 
     @staticmethod
@@ -531,16 +544,24 @@ class SimResourceManager:
             for item in plan:
                 batch_name = item['batch']
                 take_qty = item['take']
+                
+                # [Feature] 並發控制 (Race Condition Handling)
+                # 使用 with_for_update(skip_locked=True)
+                # 作用：鎖定選中的行，如果有其他事務已經鎖定了某些行，直接跳過這些行選取下一批。
+                # 這能保證在高並發下，多個請求不會互相阻塞，也不會選到同一張卡。
                 resources_to_update = SimResource.query.filter(
                     SimResource.batch == batch_name,
                     SimResource.status == 'Available',
                     SimResource.supplier == provider,
                     SimResource.type == card_type,
                     SimResource.resources_type == resources_type
-                ).order_by(SimResource.imsi_num.asc()).limit(take_qty).all() # 使用 imsi_num 排序
+                ).order_by(SimResource.imsi_num.asc())\
+                 .with_for_update(skip_locked=True)\
+                 .limit(take_qty).all()
                 
+                # 再次檢查數量 (因為 skip_locked 可能導致獲取到的數量少於預期)
                 if len(resources_to_update) < take_qty:
-                    raise Exception(f"批次 {batch_name} 中符合條件的庫存不足")
+                    raise Exception(f"批次 {batch_name} 庫存不足或正被其他用戶操作 (請求: {take_qty}, 實際鎖定: {len(resources_to_update)})")
                 
                 first_imsi = resources_to_update[0].imsi
                 last_imsi = resources_to_update[-1].imsi

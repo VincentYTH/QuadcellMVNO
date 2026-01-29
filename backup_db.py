@@ -87,7 +87,7 @@ def backup_excel(timestamp):
         
         # [Optimize] 移除僅供系統優化使用的純數字欄位
         # 這些欄位是為了 SQL 索引加速存在的，內部查閱不需要看到兩份同樣的號碼
-        cols_to_exclude = ['imsi_num', 'iccid_num', 'msisdn_num']
+        cols_to_exclude = ['imsi_num', 'iccid_num', 'msisdn_num','id']
         
         # errors='ignore' 確保即使數據庫還沒更新這幾個欄位，備份腳本也不會報錯
         df.drop(columns=cols_to_exclude, inplace=True, errors='ignore')

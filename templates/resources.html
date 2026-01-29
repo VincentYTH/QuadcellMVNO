@@ -284,7 +284,7 @@
                     <label class="form-label small">IMSI (Range Supported)</label>
                     <div class="input-group input-group-sm">
                         <input type="text" name="imsi" class="form-control" 
-                               placeholder="Single or Start-End" value="{{ search_params.imsi }}">
+                               placeholder="Single, Start-End or Batch" value="{{ search_params.imsi }}">
                         <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
                     </div>
                 </div>
@@ -293,7 +293,7 @@
                     <label class="form-label small">ICCID (Range Supported)</label>
                     <div class="input-group input-group-sm">
                         <input type="text" name="iccid" class="form-control" 
-                               placeholder="Single or Start-End" value="{{ search_params.iccid }}">
+                               placeholder="Single, Start-End or Batch" value="{{ search_params.iccid }}">
                         <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
                     </div>
                 </div>
@@ -302,7 +302,7 @@
                     <label class="form-label small">MSISDN (Range Supported)</label>
                     <div class="input-group input-group-sm">
                         <input type="text" name="msisdn" class="form-control" 
-                               placeholder="Single or Start-End" value="{{ search_params.msisdn }}">
+                               placeholder="Single, Start-End or Batch" value="{{ search_params.msisdn }}">
                         <button class="btn btn-outline-secondary btn-clear" type="button"><i class="bi bi-x"></i></button>
                     </div>
                 </div>
@@ -598,6 +598,7 @@
         <span class="text-muted small">
             {% if view_mode == 'range' %}
                 Total <strong>{{ pagination.total }}</strong> Groups
+                <span class="ms-1">(Total <strong>{{ pagination.total_records }}</strong> records)</span>
             {% else %}
                 Total <strong>{{ pagination.total }}</strong> records
             {% endif %}
