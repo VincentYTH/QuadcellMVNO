@@ -1,5 +1,6 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Index
 
 db = SQLAlchemy()
 
@@ -12,9 +13,17 @@ class SimResource(db.Model):
     resources_type = db.Column(db.String(255), index=True)
     batch = db.Column(db.String(255), index=True)
     received_date = db.Column(db.String(255))
+    
+    # 原始字符串欄位
     imsi = db.Column(db.String(255), index=True)
     iccid = db.Column(db.String(255), index=True)
     msisdn = db.Column(db.String(255), index=True)
+    
+    # [Optimize] 純數字欄位優化 (Range Mode 專用)
+    imsi_num = db.Column(db.BigInteger, index=True)
+    msisdn_num = db.Column(db.BigInteger, index=True)
+    iccid_num = db.Column(db.Numeric(22, 0), index=True)
+    
     ki = db.Column(db.String(255))
     opc = db.Column(db.String(255))
     lpa = db.Column(db.String(255))
@@ -23,23 +32,21 @@ class SimResource(db.Model):
     pin2 = db.Column(db.String(255))
     puk2 = db.Column(db.String(255))
     
-    # === 新增欄位 ===
-    # 狀態: Available / Assigned，預設 Available
     status = db.Column(db.String(20), default='Available', index=True)
-    # 客戶名稱
     customer = db.Column(db.String(100), nullable=True)
-    # 分配日期 (格式 YYYY-MM-DD)
     assigned_date = db.Column(db.String(20), nullable=True)
-    # 備注
     remark = db.Column(db.String(255), nullable=True)
-    # ================
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    def __repr__(self):
-        return f'<SimResource {self.id} - {self.type}>'
-    
+    # 複合索引優化
+    __table_args__ = (
+        Index('idx_supplier_type_status', 'supplier', 'type', 'status'),
+        Index('idx_batch_status', 'batch', 'status'),
+        Index('idx_imsi_num_status', 'imsi_num', 'status'),
+    )
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -51,6 +58,8 @@ class SimResource(db.Model):
             'imsi': self.imsi,
             'iccid': self.iccid,
             'msisdn': self.msisdn,
+            'imsi_num': self.imsi_num,
+            'iccid_num': str(self.iccid_num) if self.iccid_num else None,
             'status': self.status,
             'customer': self.customer,
             'assigned_date': self.assigned_date,

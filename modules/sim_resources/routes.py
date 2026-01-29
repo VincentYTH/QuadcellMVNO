@@ -197,54 +197,36 @@ def import_resources():
         return jsonify({'success': False, 'message': '未上傳文件'}), 400
     
     file = request.files['file']
-    mode = request.form.get('mode', 'add') # 獲取導入模式，默認為新增
+    mode = request.form.get('mode', 'add') 
     
     try:
-        # 1. 讀取 Excel 通用處理
-        # dtype=str 強制所有內容讀取為字符串 (防止 IMSI/ICCID 前導零丟失)
         df = pd.read_excel(file, dtype=str)
-        df = df.fillna('') # 將 NaN (空值) 轉換為空字符串
-        df.columns = df.columns.str.strip() # 去除標題前後空格
+        df = df.fillna('') 
+        df.columns = df.columns.str.strip() 
         
-        # ==========================================
-        # 模式 A: 修改現有資源 (Modify)
-        # ==========================================
         if mode == 'modify':
-            # 1. 驗證必要列
+            # 但如果修改了 IMSI 本身(雖然這不常見)，也需要更新 imsi_num，不過目前模板只允許修改非主鍵
             if 'IMSI' not in df.columns:
                  return jsonify({'success': False, 'message': '模板錯誤：必須包含 "IMSI" 列 (Column A)'}), 400
             
-            # 2. 定義映射關係 (Excel標題 -> DB欄位名)
-            # 僅允許修改這些與安全/卡片參數相關的欄位
             field_map = {
-                'Ki': 'ki', 
-                'OPC': 'opc', 
-                'LPA': 'lpa',
-                'PIN1': 'pin1', 
-                'PUK1': 'puk1', 
-                'PIN2': 'pin2', 
-                'PUK2': 'puk2'
+                'Ki': 'ki', 'OPC': 'opc', 'LPA': 'lpa',
+                'PIN1': 'pin1', 'PUK1': 'puk1', 'PIN2': 'pin2', 'PUK2': 'puk2'
             }
             
-            # 3. 提取 Excel 中的所有 IMSI (用於批量查詢，提升性能)
             excel_imsis = df['IMSI'].dropna().astype(str).str.strip().tolist()
-            excel_imsis = [i for i in excel_imsis if i] # 過濾掉空字符串
+            excel_imsis = [i for i in excel_imsis if i]
             
             if not excel_imsis:
                 return jsonify({'success': False, 'message': 'Excel 中沒有有效的 IMSI 數據'}), 400
 
-            # 4. 批量查詢數據庫中存在的資源
-            # 使用 in_ 查詢一次性撈出所有相關記錄，避免在迴圈中頻繁查庫
             existing_resources = SimResource.query.filter(SimResource.imsi.in_(excel_imsis)).all()
-            
-            # 建立 IMSI -> Resource 對象的映射字典，方便快速查找
             resource_map = {res.imsi: res for res in existing_resources}
             
             updated_count = 0
             not_found_count = 0
             ignored_count = 0
             
-            # 5. 遍歷 Excel 每一行進行更新
             for _, row in df.iterrows():
                 imsi = str(row['IMSI']).strip()
                 if not imsi: continue
@@ -253,11 +235,9 @@ def import_resources():
                     resource = resource_map[imsi]
                     has_change = False
                     
-                    # 遍歷允許修改的欄位
                     for excel_col, db_col in field_map.items():
                         if excel_col in df.columns:
                             val = str(row[excel_col]).strip()
-                            # 關鍵邏輯：只有當 Excel 裡填了值，才修改 DB (非覆蓋式更新)
                             if val: 
                                 setattr(resource, db_col, val)
                                 has_change = True
@@ -265,15 +245,13 @@ def import_resources():
                     if has_change:
                         updated_count += 1
                     else:
-                        ignored_count += 1 # 找到了 IMSI，但該行其他欄位都是空的
+                        ignored_count += 1 
                 else:
-                    not_found_count += 1 # 數據庫裡沒這個 IMSI
+                    not_found_count += 1 
 
-            # 6. 提交更改
             if updated_count > 0:
                 db.session.commit()
                 
-            # 7. 構建返回訊息
             msg = f"修改處理完成。"
             details = []
             if updated_count > 0: details.append(f"• 成功更新: {updated_count} 筆")
@@ -289,11 +267,8 @@ def import_resources():
                 'error_count': not_found_count
             })
 
-        # ==========================================
-        # 模式 B: 新增資源 (Add)
-        # ==========================================
         else:
-            # 1. 驗證必要列
+            # 模式 B: 新增資源 (Add)
             required_columns = ['Provider', 'CardType', 'ResourcesType', 'Batch', 'ReceivedDate', 'IMSI', 'ICCID', 'MSISDN']
             missing_cols = [col for col in required_columns if col not in df.columns]
             if missing_cols:
@@ -303,30 +278,30 @@ def import_resources():
             duplicate_count = 0
             errors = []
 
-            # 2. 獲取所有 IMSI 和 ICCID 用於預先查重 (性能優化)
             imsis = df['IMSI'].dropna().astype(str).str.strip().tolist()
             iccids = df['ICCID'].dropna().astype(str).str.strip().tolist()
             
-            # 查出數據庫中已存在的 IMSI 和 ICCID
             existing_imsis = set(r[0] for r in db.session.query(SimResource.imsi).filter(SimResource.imsi.in_(imsis)).all())
             existing_iccids = set(r[0] for r in db.session.query(SimResource.iccid).filter(SimResource.iccid.in_(iccids)).all())
 
-            # 3. 遍歷插入
             new_resources = []
             for index, row in df.iterrows():
                 try:
                     imsi = str(row['IMSI']).strip()
                     iccid = str(row['ICCID']).strip()
+                    msisdn = str(row['MSISDN']).strip()
                     
-                    # 跳過空行
                     if not imsi or not iccid: continue
                     
-                    # 查重邏輯
                     if imsi in existing_imsis or iccid in existing_iccids:
                         duplicate_count += 1
                         continue
+                    
+                    # [Optimize] 自動計算 imsi_num
+                    imsi_num = int(imsi) if imsi.isdigit() else None
+                    iccid_num = int(iccid) if iccid.isdigit() else None
+                    msisdn_num = int(msisdn) if msisdn.isdigit() else None
                         
-                    # 構建對象
                     res = SimResource(
                         supplier=str(row['Provider']).strip(),
                         type=str(row['CardType']).strip(),
@@ -334,11 +309,12 @@ def import_resources():
                         batch=str(row['Batch']).strip(),
                         received_date=str(row['ReceivedDate']).strip(),
                         imsi=imsi,
+                        imsi_num=imsi_num,
                         iccid=iccid,
-                        msisdn=str(row['MSISDN']).strip(),
-                        status='Available', # 默認狀態
-                        
-                        # 可選欄位
+                        iccid_num=iccid_num,
+                        msisdn=msisdn,
+                        msisdn_num=msisdn_num,
+                        status='Available', 
                         ki=str(row.get('Ki', '')).strip() or None,
                         opc=str(row.get('OPC', '')).strip() or None,
                         lpa=str(row.get('LPA', '')).strip() or None,
@@ -350,21 +326,17 @@ def import_resources():
                     )
                     new_resources.append(res)
                     
-                    # 簡單的防重機制：把剛加進列表的也算作已存在，防止 Excel 內部有重複
                     existing_imsis.add(imsi)
                     existing_iccids.add(iccid)
                     
                 except Exception as row_err:
                     errors.append(f"Row {index+2}: {str(row_err)}")
 
-            # 4. 批量寫入
             if new_resources:
-                # 使用 bulk_save_objects 提升寫入速度
                 db.session.bulk_save_objects(new_resources)
                 db.session.commit()
                 success_count = len(new_resources)
 
-            # 5. 構建返回訊息
             msg = f"導入完成。"
             details = []
             if success_count > 0: details.append(f"• 成功新增: {success_count} 筆")
@@ -386,8 +358,6 @@ def import_resources():
 
     except Exception as e:
         db.session.rollback()
-        # import traceback
-        # traceback.print_exc()
         return jsonify({'success': False, 'message': f"文件處理失敗: {str(e)}"}), 500
 
 # 用於下載修改模板的路由
@@ -472,16 +442,25 @@ def export_custom_resources():
     """
     try:
         data = request.json
-        # 參數獲取
         scope = data.get('scope')
         selected_ids = data.get('selected_ids')
         search_params = data.get('search_params')
         selected_columns = data.get('columns', [])
         filter_customer = data.get('filter_customer')
         filter_assigned_date = data.get('filter_assigned_date')
-        
         include_qrcode = data.get('include_qrcode', False)
         only_qrcode = data.get('only_qrcode', False)
+        
+        # 參數獲取
+        resources = SimResourceManager.get_resources_for_export(
+            scope=scope,
+            selected_ids=selected_ids,
+            search_params=search_params,
+            extra_filters={
+                'customer': filter_customer,
+                'assigned_date': filter_assigned_date
+            }
+        )
         
         # 構建查詢
         query = SimResource.query
@@ -497,7 +476,7 @@ def export_custom_resources():
             
         resources = query.all()
         
-        # 全局數量限制 (無論是 Excel 還是 QR Code，都限制 10000 筆)
+        # 全局數量限制
         if len(resources) > 10000:
             return jsonify({'error': f'導出數量限制為 10,000 筆。當前篩選結果共 {len(resources)} 筆，請縮小範圍。'}), 400
         

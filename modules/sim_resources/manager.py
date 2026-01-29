@@ -2,13 +2,12 @@ from datetime import datetime
 import pandas as pd
 import re
 import math
-from sqlalchemy import asc, desc, func, case, text
+from sqlalchemy import asc, desc, func, case, text, or_, and_
 from sqlalchemy.sql.expression import cast
 from models.sim_resource import SimResource, db
 from .config_manager import SimConfigManager
 
 class PaginationResult:
-    """Helper class to mimic Flask-SQLAlchemy Pagination object for raw/grouped queries"""
     def __init__(self, items, page, per_page, total):
         self.items = items
         self.page = page
@@ -45,46 +44,39 @@ class SimResourceManager:
 
     @staticmethod
     def get_grouped_resources(query_params, page=1, per_page=50):
-        """獲取分組後的資源列表 (按 IMSI 段落模式)"""
+        """獲取分組後的資源列表 (Range Mode 優化版)"""
         base_query = SimResource.query
         base_query = SimResourceManager._apply_attribute_filters(base_query, query_params)
         
         group_cols = [
-            SimResource.supplier,
-            SimResource.type,
-            SimResource.resources_type,
-            SimResource.batch,
-            SimResource.status,
-            SimResource.customer,
-            SimResource.assigned_date,
-            SimResource.remark
+            SimResource.supplier, SimResource.type, SimResource.resources_type,
+            SimResource.batch, SimResource.status, SimResource.customer,
+            SimResource.assigned_date, SimResource.remark
         ]
         
-        def safe_cast_diff(col, order_col):
-             return case(
-                 (cast(col, db.Text).op("~")('^[0-9]+$'), 
-                  cast(col, db.Numeric) - func.row_number().over(order_by=order_col)),
-                 else_=0
-             )
-
-        order_col = cast(SimResource.imsi, db.Numeric)
+        # 優先使用 imsi_num 進行排序
+        order_col = case((SimResource.imsi_num != None, SimResource.imsi_num), else_=cast(SimResource.imsi, db.Numeric))
         
+        # Gaps-and-Islands 計算
+        diff_val = order_col - func.row_number().over(order_by=order_col)
+
         subquery = base_query.with_entities(
             SimResource.id,
             *group_cols,
             SimResource.imsi,
+            SimResource.imsi_num,
             SimResource.iccid,
+            SimResource.iccid_num,  # 確保這兩個欄位在數據庫已存在
             SimResource.msisdn,
+            SimResource.msisdn_num, # 確保這兩個欄位在數據庫已存在
             SimResource.created_at,
             SimResource.updated_at,
-            safe_cast_diff(SimResource.imsi, order_col).label('imsi_grp'),
-            safe_cast_diff(SimResource.iccid, order_col).label('iccid_grp'),
-            safe_cast_diff(SimResource.msisdn, order_col).label('msisdn_grp')
+            diff_val.label('imsi_grp')
         ).subquery()
         
-        group_by_args = [getattr(subquery.c, col.name) for col in group_cols] + \
-                        [subquery.c.imsi_grp, subquery.c.iccid_grp, subquery.c.msisdn_grp]
+        group_by_args = [getattr(subquery.c, col.name) for col in group_cols] + [subquery.c.imsi_grp]
         
+        # 聚合查詢
         query = db.session.query(
             func.min(subquery.c.id).label('id'),
             *[getattr(subquery.c, col.name) for col in group_cols],
@@ -97,132 +89,139 @@ class SimResourceManager:
             func.max(subquery.c.msisdn).label('end_msisdn'),
             func.max(subquery.c.created_at).label('created_at'),
             func.max(subquery.c.updated_at).label('updated_at'),
-            func.array_agg(subquery.c.id).label('ids_list')
+            
+            # [Optimize Bug 2] 聚合數字欄位用於過濾
+            func.min(subquery.c.iccid_num).label('min_iccid_num'),
+            func.max(subquery.c.iccid_num).label('max_iccid_num'),
+            func.min(subquery.c.msisdn_num).label('min_msisdn_num'),
+            func.max(subquery.c.msisdn_num).label('max_msisdn_num')
         ).group_by(*group_by_args)
         
-        def apply_range_overlap_filter(q, col_min, col_max, search_val):
-            if not search_val:
-                return q
+        # [Optimize Bug 2] 範圍重疊過濾器 (Range Overlap Filter)
+        def apply_range_filter(q, col_min_num, col_max_num, search_val):
+            if not search_val: return q
             val = search_val.strip()
-            start_val, end_val = val, val
-            if '-' in val:
-                parts = val.split('-')
-                if len(parts) == 2:
-                    s, e = parts[0].strip(), parts[1].strip()
-                    if s.isdigit() and e.isdigit():
-                        start_val, end_val = s, e
-            if start_val.isdigit() and end_val.isdigit():
-                s_num = int(start_val)
-                e_num = int(end_val)
-                return q.having(
-                    (cast(col_min, db.Numeric) <= e_num) & 
-                    (cast(col_max, db.Numeric) >= s_num)
-                )
-            else:
-                return q.having(col_min.ilike(f'%{val}%'))
-
-        query = apply_range_overlap_filter(query, func.min(subquery.c.imsi), func.max(subquery.c.imsi), query_params.get('imsi'))
-        query = apply_range_overlap_filter(query, func.min(subquery.c.iccid), func.max(subquery.c.iccid), query_params.get('iccid'))
-        query = apply_range_overlap_filter(query, func.min(subquery.c.msisdn), func.max(subquery.c.msisdn), query_params.get('msisdn'))
-        
-        query = query.order_by(
-            desc('assigned_date').nullslast(),
-            desc('updated_at').nullslast(),
-            asc('start_imsi')
-        )
             
+            # 1. 範圍搜索 (Start - End)
+            if '-' in val:
+                try:
+                    parts = val.split('-')
+                    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                        s, e = int(parts[0]), int(parts[1])
+                        # 檢查兩個範圍是否有交集: max >= search_start AND min <= search_end
+                        return q.having((col_max_num >= s) & (col_min_num <= e))
+                except: pass
+            
+            # 2. 單個值搜索 (檢查是否包含在該段落內)
+            if val.isdigit():
+                # 兼容 20 位 ICCID (超出普通 Int 範圍，Python int 自動處理大數)
+                v = int(val)
+                # 檢查: min <= search_val <= max
+                return q.having((col_min_num <= v) & (col_max_num >= v))
+            
+            # 3. 模糊搜索 (Fallback)
+            # 注意：在 Range Mode 下，這裡只能對聚合結果過濾，可能不準確，建議用戶搜索數字
+            return q 
+
+        # 應用 IMSI 過濾
+        if query_params.get('imsi'):
+            imsi_min = func.min(subquery.c.imsi_num)
+            imsi_max = func.max(subquery.c.imsi_num)
+            query = apply_range_filter(query, imsi_min, imsi_max, query_params.get('imsi'))
+            
+        # [Fix Bug 2] 應用 ICCID 過濾 (使用新的 num 聚合)
+        if query_params.get('iccid'):
+            query = apply_range_filter(query, func.min(subquery.c.iccid_num), func.max(subquery.c.iccid_num), query_params.get('iccid'))
+
+        # [Fix Bug 2] 應用 MSISDN 過濾 (使用新的 num 聚合)
+        if query_params.get('msisdn'):
+            query = apply_range_filter(query, func.min(subquery.c.msisdn_num), func.max(subquery.c.msisdn_num), query_params.get('msisdn'))
+        
+        query = query.order_by(desc('assigned_date').nullslast(), desc('updated_at').nullslast(), asc('start_imsi'))
+        
         total_count = query.count()
         items = query.limit(per_page).offset((page - 1) * per_page).all()
         
         return PaginationResult(items, page, per_page, total_count)
-    
+
     @staticmethod
     def _apply_attribute_filters(query, params):
-        if params.get('provider'):
-            query = query.filter(SimResource.supplier.ilike(f'%{params["provider"]}%'))
-        if params.get('card_type'):
-            query = query.filter(SimResource.type.ilike(f'%{params["card_type"]}%'))
-        if params.get('resources_type'):
-            query = query.filter(SimResource.resources_type.ilike(f'%{params["resources_type"]}%'))
-        if params.get('batch'):
-            query = query.filter(SimResource.batch.ilike(f'%{params["batch"]}%'))
-        if params.get('received_date'):
-            query = query.filter(SimResource.received_date.ilike(f'%{params["received_date"]}%'))
-        if params.get('status'):
-            query = query.filter(SimResource.status == params['status'])
-        if params.get('customer'):
-            query = query.filter(SimResource.customer == params["customer"])
-        if params.get('remark'):
-            query = query.filter(SimResource.remark.ilike(f'%{params["remark"]}%'))    
-        start_date = params.get('assigned_date_start')
-        end_date = params.get('assigned_date_end')
-        if start_date and end_date:
-            query = query.filter(SimResource.assigned_date >= start_date, SimResource.assigned_date <= end_date)
-        elif start_date:
-            query = query.filter(SimResource.assigned_date >= start_date)
-        elif end_date:
-            query = query.filter(SimResource.assigned_date <= end_date)
+        if params.get('provider'): query = query.filter(SimResource.supplier == params["provider"])
+        if params.get('card_type'): query = query.filter(SimResource.type == params["card_type"])
+        if params.get('resources_type'): query = query.filter(SimResource.resources_type == params["resources_type"])
+        if params.get('status'): query = query.filter(SimResource.status == params['status'])
+        if params.get('customer'): query = query.filter(SimResource.customer == params["customer"])
+        if params.get('received_date'): query = query.filter(SimResource.received_date == params["received_date"])
+        if params.get('batch'): query = query.filter(SimResource.batch.ilike(f'%{params["batch"]}%'))
+        if params.get('remark'): query = query.filter(SimResource.remark.ilike(f'%{params["remark"]}%'))    
+        start_date, end_date = params.get('assigned_date_start'), params.get('assigned_date_end')
+        if start_date and end_date: query = query.filter(SimResource.assigned_date >= start_date, SimResource.assigned_date <= end_date)
+        elif start_date: query = query.filter(SimResource.assigned_date >= start_date)
+        elif end_date: query = query.filter(SimResource.assigned_date <= end_date)
         return query
 
     @staticmethod
     def _apply_id_filters(query, params):
-        def apply_range_or_like(q, field, value):
+        def apply_filter(q, field_num, field_str, value):
             if not value: return q
-            value = value.strip()
-            if '-' in value:
-                parts = value.split('-')
-                if len(parts) == 2:
-                    start, end = parts[0].strip(), parts[1].strip()
-                    if start.isdigit() and end.isdigit():
-                        return q.filter(field >= start, field <= end)
-            return q.filter(field.ilike(f'%{value}%'))
+            val = value.strip()
+            if '-' in val:
+                try:
+                    parts = val.split('-')
+                    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                        if field_num is not None:
+                            return q.filter(field_num >= int(parts[0]), field_num <= int(parts[1]))
+                        return q.filter(field_str >= parts[0], field_str <= parts[1])
+                except: pass
+            
+            # 精確搜索 (長數字)
+            if val.isdigit() and len(val) > 5:
+                if field_num is not None:
+                    # 使用數字欄位精確匹配，性能遠高於字符串匹配
+                    return q.filter(field_num == int(val))
+                return q.filter(field_str == val)
+            
+            return q.filter(field_str.ilike(f'%{val}%'))
 
-        query = apply_range_or_like(query, SimResource.imsi, params.get('imsi'))
-        query = apply_range_or_like(query, SimResource.iccid, params.get('iccid'))
-        query = apply_range_or_like(query, SimResource.msisdn, params.get('msisdn'))
+        query = apply_filter(query, SimResource.imsi_num, SimResource.imsi, params.get('imsi'))
+        # [Optimize] 這裡假設 SimResource 已經有了 iccid_num 和 msisdn_num 屬性
+        # 如果用戶還沒更新 models.py 並重啟，這裡會報錯，導致 'Load Failed'
+        if hasattr(SimResource, 'iccid_num'):
+            query = apply_filter(query, SimResource.iccid_num, SimResource.iccid, params.get('iccid'))
+        else:
+            query = apply_filter(query, None, SimResource.iccid, params.get('iccid'))
+            
+        if hasattr(SimResource, 'msisdn_num'):
+            query = apply_filter(query, SimResource.msisdn_num, SimResource.msisdn, params.get('msisdn'))
+        else:
+            query = apply_filter(query, None, SimResource.msisdn, params.get('msisdn'))
+            
         return query
 
-    @staticmethod
-    def _apply_search_filters(query, params):
-        query = SimResourceManager._apply_attribute_filters(query, params)
-        query = SimResourceManager._apply_id_filters(query, params)
-        return query
-    
     @staticmethod
     def _apply_sorting(query, params):
         sort_field = params.get('sort', 'updated_at')
         sort_order = params.get('order', 'desc')
-        valid_fields = ['supplier', 'type', 'resources_type', 'batch', 'received_date', 'imsi', 'iccid', 'msisdn', 'customer', 'assigned_date', 'status', 'created_at', 'updated_at']
-        if sort_field not in valid_fields: sort_field = 'updated_at'
         
-        col_attr = getattr(SimResource, sort_field)
-        
-        # 1. 設定主排序鍵
-        if sort_order == 'asc':
-            primary_sort = asc(col_attr).nullslast()
-        else:
-            primary_sort = desc(col_attr).nullslast()
-            
-        # 2. 加入 IMSI (ASC) 作為次要排序鍵
-        return query.order_by(primary_sort, asc(SimResource.imsi))
+        col_attr = None
+        if sort_field == 'imsi': col_attr = SimResource.imsi_num
+        elif sort_field == 'iccid' and hasattr(SimResource, 'iccid_num'): col_attr = SimResource.iccid_num
+        elif sort_field == 'msisdn' and hasattr(SimResource, 'msisdn_num'): col_attr = SimResource.msisdn_num
+        elif hasattr(SimResource, sort_field): col_attr = getattr(SimResource, sort_field)
+        else: col_attr = SimResource.updated_at
+
+        primary_sort = asc(col_attr).nullslast() if sort_order == 'asc' else desc(col_attr).nullslast()
+        return query.order_by(primary_sort, asc(SimResource.imsi_num))
 
     @staticmethod
     def get_options():
-        """
-        獲取所有選項數據
-        [修改] Provider/Type/ResType 嚴格遵循 JSON 配置的順序，不再強制字母排序
-        """
         try:
-            # 1. 加載配置 (這是權威順序)
             config = SimConfigManager.load_config()
-            
-            # 2. 查詢用戶動態輸入的欄位 (Customer, Batch, Dates)
             existing_customers = db.session.query(SimResource.customer).distinct().all()
             existing_batches = db.session.query(SimResource.batch).distinct().all()
             existing_dates = db.session.query(SimResource.received_date).distinct().all()
             existing_assigned_dates = db.session.query(SimResource.assigned_date).distinct().all()
             
-            # 排序工具
             def natural_keys(text):
                 return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', str(text))]
 
@@ -232,13 +231,11 @@ class SimResourceManager:
             dates_list = sorted([d[0] for d in existing_dates if d[0] and d[0].strip()], reverse=True)
             assigned_dates_list = sorted([d[0] for d in existing_assigned_dates if d[0] and d[0].strip()], reverse=True)
             
-            # 直接返回配置列表
             return {
                 'providers': config.get('providers', []), 
                 'card_types': config.get('card_types', []), 
                 'resources_types': config.get('resources_types', []), 
                 'provider_mapping': config.get('provider_mapping', {}),
-                
                 'customers': customers_list,
                 'batches': batches_list,
                 'received_dates': dates_list,
@@ -254,6 +251,7 @@ class SimResourceManager:
     
     @staticmethod
     def get_distinct_filters(params, extra_filters=None):
+        # 獲取過濾器選項，用於下拉選單
         base_query = SimResource.query
         base_query = SimResourceManager._apply_search_filters(base_query, params)
         
@@ -277,8 +275,16 @@ class SimResourceManager:
     @staticmethod
     def get_resources_for_export(scope, selected_ids=None, search_params=None, extra_filters=None):
         query = SimResource.query
+        
         if scope == 'selected' and selected_ids:
-            query = query.filter(SimResource.id.in_(selected_ids))
+            # 這裡原本直接用 in_(ids)，現在改用通用方法處理 Range Objects
+            q, err = SimResourceManager._get_batch_targets('selected', selected_ids)
+            if not err:
+                query = q
+            else:
+                # 如果出錯（例如空列表），返回空查詢
+                return []
+                
         elif scope == 'search' and search_params:
             query = SimResourceManager._apply_search_filters(query, search_params)
             query = SimResourceManager._apply_sorting(query, search_params)
@@ -302,10 +308,10 @@ class SimResourceManager:
         
         card_type = data.get('CardType', '')
         if card_type == 'Soft Profile':
-            if not data.get('Ki', '').strip(): errors.append("Soft Profile 必须填写 Ki")
-            if not data.get('OPC', '').strip(): errors.append("Soft Profile 必须填写 OPC")
+            if not data.get('Ki', '').strip(): errors.append("Soft Profile 必須還填寫 Ki")
+            if not data.get('OPC', '').strip(): errors.append("Soft Profile 必須還填寫 OPC")
         elif card_type == 'eSIM':
-            if not data.get('LPA', '').strip(): errors.append("eSIM 必须填写 LPA")
+            if not data.get('LPA', '').strip(): errors.append("eSIM 必須還填寫 LPA")
         
         if not is_edit:
             if data.get('IMSI'):
@@ -325,17 +331,30 @@ class SimResourceManager:
     
     @staticmethod
     def create_resource(data):
+        # 這裡需要確保傳入的數據能正確轉換為 num
+        imsi = data['IMSI'].strip()
+        iccid = data['ICCID'].strip()
+        msisdn = data['MSISDN'].strip()
+        
+        imsi_num = int(imsi) if imsi.isdigit() else None
+        msisdn_num = int(msisdn) if msisdn.isdigit() else None
+        iccid_num = int(iccid) if iccid.isdigit() else None
+
         customer = data.get('Customer', '').strip() or None
-        status = 'Assigned' if customer else 'Available'        
+        status = 'Assigned' if customer else 'Available'
+        
         resource = SimResource(
             type=data['CardType'].strip(),
             supplier=data['Provider'].strip(),
             resources_type=data['ResourcesType'].strip(),
             batch=data['Batch'].strip(),
             received_date=data['ReceivedDate'].strip(),
-            imsi=data['IMSI'].strip(),
-            iccid=data['ICCID'].strip(),
-            msisdn=data['MSISDN'].strip(),
+            imsi=imsi,
+            imsi_num=imsi_num,
+            iccid=iccid,
+            iccid_num=iccid_num,
+            msisdn=msisdn,
+            msisdn_num=msisdn_num,
             ki=data.get('Ki', '').strip() or None,
             opc=data.get('OPC', '').strip() or None,
             lpa=data.get('LPA', '').strip() or None,
@@ -355,14 +374,23 @@ class SimResourceManager:
     @staticmethod
     def update_resource(resource_id, data):
         resource = SimResource.query.get_or_404(resource_id)
+        # ... 基礎欄位更新 ...
         resource.type = data['CardType'].strip()
         resource.supplier = data['Provider'].strip()
         resource.resources_type = data['ResourcesType'].strip()
         resource.batch = data['Batch'].strip()
         resource.received_date = data['ReceivedDate'].strip()
+        
+        # 更新並同步 num
         resource.imsi = data['IMSI'].strip()
+        resource.imsi_num = int(resource.imsi) if resource.imsi.isdigit() else None
+        
         resource.iccid = data['ICCID'].strip()
+        resource.iccid_num = int(resource.iccid) if resource.iccid.isdigit() else None
+        
         resource.msisdn = data['MSISDN'].strip()
+        resource.msisdn_num = int(resource.msisdn) if resource.msisdn.isdigit() else None
+        
         resource.ki = data.get('Ki', '').strip() or None
         resource.opc = data.get('OPC', '').strip() or None
         resource.lpa = data.get('LPA', '').strip() or None
@@ -370,13 +398,14 @@ class SimResourceManager:
         resource.puk1 = data.get('PUK1', '').strip() or None
         resource.pin2 = data.get('PIN2', '').strip() or None
         resource.puk2 = data.get('PUK2', '').strip() or None
+        
         if 'Customer' in data: 
-            customer = data.get('Customer', '').strip() or None
-            resource.customer = customer
+            resource.customer = data.get('Customer', '').strip() or None
         if 'Assign Date' in data:
             resource.assigned_date = data.get('Assign Date', '').strip() or None   
         if 'Remark' in data:
             resource.remark = data.get('Remark', '').strip() or None     
+            
         db.session.commit()
         return resource
     
@@ -509,7 +538,7 @@ class SimResourceManager:
                     SimResource.supplier == provider,
                     SimResource.type == card_type,
                     SimResource.resources_type == resources_type
-                ).order_by(SimResource.imsi.asc()).limit(take_qty).all()
+                ).order_by(SimResource.imsi_num.asc()).limit(take_qty).all() # 使用 imsi_num 排序
                 
                 if len(resources_to_update) < take_qty:
                     raise Exception(f"批次 {batch_name} 中符合條件的庫存不足")
@@ -536,43 +565,23 @@ class SimResourceManager:
     @staticmethod
     def manual_assignment(scope, ids, start_imsi, end_imsi, customer, assigned_date, remark=None):
         try:
+            # 獲取目標 (支援新的 Range Object 格式)
             query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
             if error: return {"success": False, "message": error}
             
-            resources = query.all()
-            target_resources = []
-            
-            if scope == 'range':
-                if not start_imsi.isdigit() or not end_imsi.isdigit():
-                    return {"success": False, "message": "IMSI 必須為純數字"}
-                s_int, e_int = int(start_imsi), int(end_imsi)
-                if s_int > e_int: return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
-                if (e_int - s_int + 1) > 10000: return {"success": False, "message": "單次操作數量過大 (上限 10000)"}
-
-                for res in resources:
-                    if res.imsi and res.imsi.isdigit():
-                        if s_int <= int(res.imsi) <= e_int:
-                            target_resources.append(res)
-            else:
-                target_resources = resources
-
-            if not target_resources: return {"success": False, "message": "未找到符合條件的資源"}
-
-            unavailable = []
-            for res in target_resources:
-                if res.status != 'Available': unavailable.append(res.imsi)
-            
-            if unavailable: return {"success": False, "message": f"以下 IMSI 已被分配或不可用: {', '.join(unavailable[:3])}..."}
-
-            for res in target_resources:
-                res.status = 'Assigned'
-                res.customer = customer
-                res.assigned_date = assigned_date
-                if remark is not None and str(remark).strip():
-                    res.remark = str(remark).strip()
+            # 直接執行更新，避免先查詢再循環更新，提升性能
+            update_values = {
+                SimResource.status: 'Assigned',
+                SimResource.customer: customer,
+                SimResource.assigned_date: assigned_date
+            }
+            if remark is not None and str(remark).strip():
+                update_values[SimResource.remark] = str(remark).strip()
+                
+            updated_count = query.update(update_values, synchronize_session=False)
             
             db.session.commit()
-            return {"success": True, "message": f"成功分配 {len(target_resources)} 張卡"}
+            return {"success": True, "message": f"成功分配 {updated_count} 張卡"}
         except Exception as e:
             db.session.rollback()
             return {"success": False, "message": f"系統錯誤: {str(e)}"}
@@ -583,31 +592,18 @@ class SimResourceManager:
             query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
             if error: return {"success": False, "message": error}
             
-            resources = query.all()
-            target_resources = []
+            # 僅更新狀態為 Assigned 的
+            query = query.filter(SimResource.status == 'Assigned')
             
-            if scope == 'range':
-                if not start_imsi.isdigit() or not end_imsi.isdigit():
-                    return {"success": False, "message": "IMSI 必須為純數字"}
-                s_int, e_int = int(start_imsi), int(end_imsi)
-                for res in resources:
-                    if res.imsi and res.imsi.isdigit():
-                        if s_int <= int(res.imsi) <= e_int:
-                            target_resources.append(res)
-            else:
-                target_resources = resources
-
-            if not target_resources: return {"success": False, "message": "未找到符合條件的資源"}
-            
-            changed_count = 0
-            for res in target_resources:
-                if res.status == 'Assigned':
-                    res.status = 'Available'
-                    res.customer = None
-                    res.assigned_date = None
-                    if remark is not None and str(remark).strip():
-                        res.remark = str(remark).strip()
-                    changed_count += 1
+            update_values = {
+                SimResource.status: 'Available',
+                SimResource.customer: None,
+                SimResource.assigned_date: None
+            }
+            if remark is not None and str(remark).strip():
+                update_values[SimResource.remark] = str(remark).strip()
+                
+            changed_count = query.update(update_values, synchronize_session=False)
             
             if changed_count == 0: return {"success": False, "message": "選定範圍內沒有 'Assigned' 狀態的資源，無需取消。"}
 
@@ -621,11 +617,30 @@ class SimResourceManager:
     def _get_batch_targets(scope, ids=None, start_imsi=None, end_imsi=None):
         if scope == 'selected':
             if not ids: return None, "未選擇任何項目"
-            return SimResource.query.filter(SimResource.id.in_(ids)), None
+            if len(ids) > 0 and isinstance(ids[0], dict):
+                conditions = []
+                for item in ids:
+                    start = item.get('start')
+                    end = item.get('end')
+                    batch = item.get('batch')
+                    if start and end:
+                        if str(start).isdigit() and str(end).isdigit():
+                             s_int, e_int = int(start), int(end)
+                             cond = and_(SimResource.imsi_num >= s_int, SimResource.imsi_num <= e_int, SimResource.batch == batch)
+                        else:
+                             cond = and_(SimResource.imsi >= start, SimResource.imsi <= end, SimResource.batch == batch)
+                        conditions.append(cond)
+                if not conditions: return None, "無效的選擇範圍數據"
+                return SimResource.query.filter(or_(*conditions)), None
+            else:
+                return SimResource.query.filter(SimResource.id.in_(ids)), None
         elif scope == 'range':
             if not start_imsi or not end_imsi: return None, "請輸入起始和結束 IMSI"
-            query = SimResource.query.filter(SimResource.imsi >= start_imsi, SimResource.imsi <= end_imsi)
-            return query, None
+            if str(start_imsi).isdigit() and str(end_imsi).isdigit():
+                 s_int, e_int = int(start_imsi), int(end_imsi)
+                 return SimResource.query.filter(SimResource.imsi_num >= s_int, SimResource.imsi_num <= e_int), None
+            else:
+                 return SimResource.query.filter(SimResource.imsi >= start_imsi, SimResource.imsi <= end_imsi), None
         return None, "無效的操作範圍"
 
     @staticmethod
@@ -634,23 +649,6 @@ class SimResourceManager:
             query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
             if error: return {"success": False, "message": error}
             
-            resources = query.all()
-            target_ids = []
-            
-            if scope == 'range':
-                if not start_imsi.isdigit() or not end_imsi.isdigit():
-                    return {"success": False, "message": "IMSI 必須為純數字"}
-                s_int, e_int = int(start_imsi), int(end_imsi)
-                for res in resources:
-                    if res.imsi and res.imsi.isdigit():
-                        imsi_int = int(res.imsi)
-                        if s_int <= imsi_int <= e_int:
-                            target_ids.append(res.id)
-            else:
-                target_ids = [r.id for r in resources]
-            
-            if not target_ids: return {"success": False, "message": "未找到符合條件的資源"}
-
             fields_to_update = {}
             allowed_fields = {'Provider': 'supplier', 'CardType': 'type', 'ResourcesType': 'resources_type', 'Batch': 'batch', 'ReceivedDate': 'received_date', 'Remark': 'remark'}
             
@@ -659,7 +657,7 @@ class SimResourceManager:
             
             if not fields_to_update: return {"success": False, "message": "未輸入任何需要更新的欄位"}
 
-            updated_count = SimResource.query.filter(SimResource.id.in_(target_ids)).update(fields_to_update, synchronize_session=False)
+            updated_count = query.update(fields_to_update, synchronize_session=False)
             db.session.commit()
             return {"success": True, "message": f"成功更新 {updated_count} 筆資源"}
         except Exception as e:
@@ -672,34 +670,14 @@ class SimResourceManager:
             query, error = SimResourceManager._get_batch_targets(scope, ids, start_imsi, end_imsi)
             if error: return {"success": False, "message": error}
             
-            target_ids = []
+            # 對於 range 刪除，做一個安全檢查，防止誤刪太多
             if scope == 'range':
-                if not start_imsi.isdigit() or not end_imsi.isdigit(): return {"success": False, "message": "IMSI 必須為純數字"}
-                s_int, e_int = int(start_imsi), int(end_imsi)
-                if s_int > e_int: return {"success": False, "message": "起始 IMSI 不能大於結束 IMSI"}
-                
-                expected_count = e_int - s_int + 1
-                if expected_count > 10000: return {"success": False, "message": f"單次操作範圍過大，上限 10000"}
+                 if not start_imsi.isdigit() or not end_imsi.isdigit(): return {"success": False, "message": "IMSI 必須為純數字"}
+                 s_int, e_int = int(start_imsi), int(end_imsi)
+                 expected_count = e_int - s_int + 1
+                 if expected_count > 10000: return {"success": False, "message": f"單次操作範圍過大，上限 10000"}
 
-                resources = query.all()
-                found_imsis = set()
-                target_ids = []
-                for res in resources:
-                    if res.imsi and res.imsi.isdigit():
-                        imsi_int = int(res.imsi)
-                        if s_int <= imsi_int <= e_int:
-                            target_ids.append(res.id)
-                            found_imsis.add(imsi_int)
-                
-                if len(found_imsis) < expected_count:
-                    return {"success": False, "message": f"驗證失敗：數據庫中缺失 {expected_count - len(found_imsis)} 個號碼，請確保該段落內所有 IMSI 都存在。"}
-            else:
-                resources = query.all()
-                target_ids = [r.id for r in resources]
-
-            if not target_ids: return {"success": False, "message": "未找到符合條件的資源"}
-            
-            deleted_count = SimResource.query.filter(SimResource.id.in_(target_ids)).delete(synchronize_session=False)
+            deleted_count = query.delete(synchronize_session=False)
             db.session.commit()
             return {"success": True, "message": f"成功刪除 {deleted_count} 筆資源"}
         except Exception as e:

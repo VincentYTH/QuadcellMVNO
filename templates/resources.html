@@ -481,8 +481,8 @@
             {% for res in resources %}
             <tr>
                 <td>
-                    <input type="checkbox" class="form-check-input resource-checkbox" 
-                           value="{% if view_mode == 'range' %}{{ res.ids_list | tojson }}{% else %}{{ res.id }}{% endif %}">
+                    <input type="checkbox" class="form-check-input resource-checkbox"
+                           value='{% if view_mode == "range" %}{"start": "{{ res.start_imsi }}", "end": "{{ res.end_imsi }}", "batch": "{{ res.batch }}"}{% else %}{{ res.id }}{% endif %}'>
                 </td>
                 <td>
                     {% if res.status == 'Available' %}
@@ -1565,19 +1565,21 @@ var selectedResourceIds = [];
 var availableColumns = ["IMSI", "ICCID", "MSISDN", "LPA", "Ki", "OPC", "Customer", "Assign Date", "Provider", "CardType", "ResourcesType", "Remark", "Status", "Batch", "ReceivedDate", "PIN1", "PUK1", "PIN2", "PUK2", "Created At", "Updated At"];
 var defaultCheckedCols = ['IMSI', 'ICCID', 'MSISDN'];
 
-// [修改] 支援段落模式下 checkbox value 為 JSON 數組的情況
+// 支援段落模式下 checkbox value 為 JSON 對象的情況
 function updateSelectedIds() {
     selectedResourceIds = [];
     $('.resource-checkbox:checked').each(function() {
         var val = $(this).val();
-        if (val.startsWith('[')) {
-            // Range 模式：解析 JSON 數組並合併 ID
+        // 嘗試解析 JSON (針對 Range Mode)
+        if (val.trim().startsWith('{')) {
             try {
-                var ids = JSON.parse(val);
-                selectedResourceIds = selectedResourceIds.concat(ids);
-            } catch(e) { console.error('Error parsing checkbox range value', e); }
+                var rangeObj = JSON.parse(val);
+                selectedResourceIds.push(rangeObj);
+            } catch(e) {
+                console.error("Value parsing error", e);
+            }
         } else {
-            // Single 模式：直接添加 ID
+            // Single Mode
             selectedResourceIds.push(parseInt(val));
         }
     });
