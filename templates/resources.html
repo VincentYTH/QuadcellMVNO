@@ -2469,13 +2469,12 @@ $(document).ready(function() {
         var scope = $('input[name="exportScope"]:checked').val();
         var includeQR = $('#exportWithQR').is(':checked');
 
-        // 數量限制檢查
-        if (includeQR) {
-            let exportCount = (scope === 'selected') ? selectedResourceIds.length : totalSearchRecords;
-            if (exportCount > 10000) {
-                alert(`QR Code 生成數量限制為 10,000 筆 (當前: ${exportCount})。`);
-                return; 
-            }
+        // 全局數量限制檢查 (不再僅限於 includeQR)
+        let exportCount = (scope === 'selected') ? selectedResourceIds.length : totalSearchRecords;
+        
+        if (exportCount > 10000) {
+            alert(`導出數量限制為 10,000 筆 (當前: ${exportCount})。\n請先使用過濾器縮小範圍，或分批導出。`);
+            return; 
         }
         
         if (scope === 'selected' && selectedResourceIds.length === 0) { alert("請先選擇至少一個項目！"); return; }

@@ -497,8 +497,9 @@ def export_custom_resources():
             
         resources = query.all()
         
-        if include_qrcode and len(resources) > 10000:
-            return jsonify({'error': f'QR Code 生成數量限制為 10,000 筆。'}), 400
+        # 全局數量限制 (無論是 Excel 還是 QR Code，都限制 10000 筆)
+        if len(resources) > 10000:
+            return jsonify({'error': f'導出數量限制為 10,000 筆。當前篩選結果共 {len(resources)} 筆，請縮小範圍。'}), 400
         
         if not resources:
             return jsonify({'error': '沒有符合條件的數據可導出'}), 400
