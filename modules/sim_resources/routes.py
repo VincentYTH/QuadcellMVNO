@@ -10,6 +10,7 @@ import os
 from .manager import SimResourceManager
 from models.sim_resource import SimResource, db
 from .config_manager import SimConfigManager
+from PIL import Image, ImageDraw, ImageFont
 
 # 引入 OpenPyXL 樣式組件 (用於 Excel 美化)
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -577,17 +578,79 @@ def export_custom_resources():
         else:
             zip_io = io.BytesIO()
             
-            # 使用標準 zipfile，無加密
+            # 使用標準 zipfile
             with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zf:
                 qr_factory = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=2)
                 
+                # 設定字體大小 (約預設的 2.5 倍)
+                target_font_size = 24
+                font = None
+                
+                # 嘗試加載系統字體
+                font_candidates = [
+                    "arial.ttf",  # Windows 常見
+                    "Arial.ttf",
+                    "DejaVuSans.ttf", # Linux 常見
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/TTF/DejaVuSans.ttf"
+                ]
+                
+                for font_path in font_candidates:
+                    try:
+                        font = ImageFont.truetype(font_path, target_font_size)
+                        break
+                    except (OSError, IOError):
+                        continue
+                
+                # 如果找不到任何字體，退回預設 (無法調整大小)
+                if font is None:
+                    print("Warning: No system font found, falling back to default (small) font.")
+                    font = ImageFont.load_default()
+
                 for res in resources:
                     if res.type == 'eSIM' and res.lpa:
                         try:
                             qr_factory.clear()
                             qr_factory.add_data(res.lpa)
                             qr_factory.make(fit=True)
-                            img = qr_factory.make_image(fill_color="black", back_color="white")
+                            # 生成 PIL 圖像對象 (需要 .get_image() 來獲取原生 PIL 對象以進行編輯)
+                            img = qr_factory.make_image(fill_color="black", back_color="white").get_image()
+                            
+                            # === 添加 ICCID 文字 ===
+                            if res.iccid:
+                                txt = res.iccid
+                                draw = ImageDraw.Draw(img)
+                                
+                                # 計算文字大小 (兼容不同版本的 Pillow)
+                                if hasattr(draw, 'textbbox'):
+                                    bbox = draw.textbbox((0, 0), txt, font=font)
+                                    text_width = bbox[2] - bbox[0]
+                                    text_height = bbox[3] - bbox[1]
+                                else:
+                                    text_width, text_height = draw.textsize(txt, font=font)
+                                
+                                # 增加底部留白高度 (文字高度 + 上下間距)
+                                padding = 6 
+                                new_height = img.height + text_height + (padding * 2)
+                                
+                                # 創建新白色畫布
+                                new_img = Image.new('RGB', (img.width, new_height), 'white')
+                                
+                                # 貼上原始 QR Code
+                                new_img.paste(img, (0, 0))
+                                
+                                # 繪製文字 (水平居中)
+                                draw_new = ImageDraw.Draw(new_img)
+                                text_x = (img.width - text_width) // 2
+                                # 防止文字比圖片寬導致 x 為負數
+                                text_x = max(0, text_x)
+                                text_y = img.height + padding
+                                
+                                draw_new.text((text_x, text_y), txt, font=font, fill="black")
+                                
+                                # 更新 img 變量為新圖片
+                                img = new_img
+                            # ============================
                             
                             img_byte_arr = io.BytesIO()
                             img.save(img_byte_arr, format='PNG')
@@ -596,7 +659,6 @@ def export_custom_resources():
                             elif res.imsi: fname = f"{res.imsi}.png"
                             else: fname = f"unknown_{res.id}.png"
                             
-                            # 直接寫入 Zip 根目錄
                             zf.writestr(fname, img_byte_arr.getvalue())
                             
                         except Exception as e:
