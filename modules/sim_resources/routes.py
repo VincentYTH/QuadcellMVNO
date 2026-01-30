@@ -582,15 +582,15 @@ def export_custom_resources():
             with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zf:
                 qr_factory = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=2)
                 
-                # 設定字體大小 (約預設的 2.5 倍)
-                target_font_size = 24
+                # 設定字體大小
+                target_font_size = 26
                 font = None
                 
                 # 嘗試加載系統字體
                 font_candidates = [
-                    "arial.ttf",  # Windows 常見
+                    "arial.ttf",  # Windows
                     "Arial.ttf",
-                    "DejaVuSans.ttf", # Linux 常見
+                    "DejaVuSans.ttf", # Linux
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                     "/usr/share/fonts/TTF/DejaVuSans.ttf"
                 ]
@@ -602,9 +602,8 @@ def export_custom_resources():
                     except (OSError, IOError):
                         continue
                 
-                # 如果找不到任何字體，退回預設 (無法調整大小)
                 if font is None:
-                    print("Warning: No system font found, falling back to default (small) font.")
+                    print("Warning: No system font found, falling back to default.")
                     font = ImageFont.load_default()
 
                 for res in resources:
@@ -613,42 +612,50 @@ def export_custom_resources():
                             qr_factory.clear()
                             qr_factory.add_data(res.lpa)
                             qr_factory.make(fit=True)
-                            # 生成 PIL 圖像對象 (需要 .get_image() 來獲取原生 PIL 對象以進行編輯)
                             img = qr_factory.make_image(fill_color="black", back_color="white").get_image()
                             
-                            # === 添加 ICCID 文字 ===
+                            # === 添加 ICCID 文字 (置中優化版) ===
                             if res.iccid:
                                 txt = res.iccid
                                 draw = ImageDraw.Draw(img)
                                 
-                                # 計算文字大小 (兼容不同版本的 Pillow)
+                                # 精確計算文字邊界
                                 if hasattr(draw, 'textbbox'):
                                     bbox = draw.textbbox((0, 0), txt, font=font)
                                     text_width = bbox[2] - bbox[0]
                                     text_height = bbox[3] - bbox[1]
+                                    # 修正：加上 descent (基線以下的高度)，讓視覺更平衡
+                                    text_height += bbox[3] 
                                 else:
                                     text_width, text_height = draw.textsize(txt, font=font)
                                 
-                                # 增加底部留白高度 (文字高度 + 上下間距)
-                                padding = 6 
-                                new_height = img.height + text_height + (padding * 2)
+                                # 設定上下間距，確保文字在白條中間
+                                padding_top = 1
+                                padding_bottom = 1
                                 
-                                # 創建新白色畫布
+                                # 計算底部白條的總高度
+                                footer_height = text_height + padding_top + padding_bottom
+                                
+                                # 創建新畫布 (總高度 = 原圖高 + 底部白條高)
+                                new_height = img.height + footer_height
                                 new_img = Image.new('RGB', (img.width, new_height), 'white')
                                 
-                                # 貼上原始 QR Code
+                                # 1. 貼上原始 QR Code
                                 new_img.paste(img, (0, 0))
                                 
-                                # 繪製文字 (水平居中)
+                                # 2. 繪製文字 (水平置中 + 垂直置中)
                                 draw_new = ImageDraw.Draw(new_img)
+                                
+                                # 水平位置 (置中)
                                 text_x = (img.width - text_width) // 2
-                                # 防止文字比圖片寬導致 x 為負數
                                 text_x = max(0, text_x)
-                                text_y = img.height + padding
+                                
+                                # 垂直位置 (原圖高度 + 上方間距)
+                                # 這樣文字就會位於底部白條的正中間
+                                text_y = img.height + padding_top
                                 
                                 draw_new.text((text_x, text_y), txt, font=font, fill="black")
                                 
-                                # 更新 img 變量為新圖片
                                 img = new_img
                             # ============================
                             
